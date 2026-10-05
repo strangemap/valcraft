@@ -18,7 +18,7 @@ namespace ValCraft
 	/// Minecraft (x, y, z) = (-unity x, unity y + yOffset, unity z); Minecraft yaw = Unity yaw, pitch = pitch, roll = -roll.
 	/// </summary>
 	[BepInPlugin("valcraft.passthrough", "ValCraft", "0.1.0")]
-	public class Plugin : BaseUnityPlugin
+	public partial class Plugin : BaseUnityPlugin
 	{
 		private const int GroundRadius = 28;
 		private const int GroundDepth = 3;
@@ -63,8 +63,7 @@ namespace ValCraft
 			meleeDamage = Config.Bind("Combat", "MeleeDamage", 35f, "Valheim damage of a Minecraft sword swing");
 			arrowDamage = Config.Bind("Combat", "ArrowDamage", 30f, "Valheim damage of a Minecraft arrow");
 			explosionDamage = Config.Bind("Combat", "ExplosionDamage", 120f, "Valheim damage at the centre of a Minecraft explosion (TNT, creepers)");
-			foreach (var b in new[] { "Attack", "SecondaryAttack", "Block", "Hotbar1", "Hotbar2", "Hotbar3", "Hotbar4", "Hotbar5", "Hotbar6", "Hotbar7", "Hotbar8" })
-				blocked[b] = true;
+			BindControls();
 			link = new Link("ws://127.0.0.1:" + Config.Bind("Link", "Port", 25599, "Minecraft passthrough port").Value + "/");
 			link.Start();
 			new Harmony("valcraft.passthrough").PatchAll();
@@ -78,7 +77,7 @@ namespace ValCraft
 		}
 
 		/// <summary>Whether the passthrough runs right now (connected, in a world, on).</summary>
-		private bool On => passOn && link.Connected && Player.m_localPlayer != null;
+		internal bool On => passOn && link.Connected && Player.m_localPlayer != null;
 
 		/// <summary>Valheim's own menus and text fields own the mouse and keys: nothing goes to Minecraft then.</summary>
 		private static bool InGui()
@@ -87,11 +86,6 @@ namespace ValCraft
 				|| (Chat.instance != null && Chat.instance.HasFocus()) || StoreGui.IsVisible() || Hud.IsPieceSelectionVisible();
 		}
 
-		/// <summary>While Minecraft has the hands, Valheim doesn't see its attack/block/hotbar buttons.</summary>
-		internal static bool Swallow(string name)
-		{
-			return !bypass && mcHands && I != null && I.On && blocked.ContainsKey(name) && !InGui();
-		}
 
 		private static bool Key(ConfigEntry<KeyboardShortcut> k)
 		{
@@ -138,19 +132,7 @@ namespace ValCraft
 				Message("Minecraft connected");
 			}
 
-			// Minecraft's window = Valheim's picture, at up to ~1080p worth of pixels (the effect scales it up)
-			Addon.BackbufferSize(out int bw, out int bh);
-			if (bw <= 0)
-			{
-				bw = Screen.width;
-				bh = Screen.height;
-			}
-			if (bw > 0 && bh > 0 && bw * 65536 + bh != viewSent)
-			{
-				viewSent = bw * 65536 + bh;
-				double scale = Math.Min(1.0, Math.Sqrt(MaxMinecraftPixels / ((double)bw * bh)));
-				Send($"{{\"t\":\"view\",\"w\":{(int)(bw * scale + 0.5)},\"h\":{(int)(bh * scale + 0.5)}}}");
-			}
+			ControlsUpdate(player);
 
 			if (!haveOffset || relevel)
 			{
@@ -168,10 +150,12 @@ namespace ValCraft
 
 			if (Time.unscaledTime >= nextHide)
 			{
-				nextHide = Time.unscaledTime + 0.5f;
-				HidePlayer(true);
+				nextHide = Time.unscaledTime + 0.25f;
+				// Minecraft's hands: Steve is the player; Valheim's weapons: the Viking is (Steve hides)
+				HidePlayer(mcHands);
 			}
 
+			ControlsInput(player);
 			Input(player);
 			if (haveOffset)
 			{
@@ -200,20 +184,24 @@ namespace ValCraft
 			if (!on)
 				return;
 			var player = Player.m_localPlayer;
+			PlaceCamera(cam, player);
+			int mode = CamMode;
 			Transform t = cam.transform;
 			Vector3 e = t.eulerAngles;
 			float yaw = Wrap(e.y), pitch = Wrap(e.x), roll = -Wrap(e.z);
 			Vector3 c = t.position;
 			double mx = -c.x, my = c.y + yOffset, mz = c.z;
 			Addon.SetPlanes(cam.nearClipPlane, cam.farClipPlane);
-			if (Time.frameCount % 600 == 0)
-				Log($"camera near {cam.nearClipPlane} far {cam.farClipPlane} fov {cam.fieldOfView} hdr {cam.allowHDR} target {(cam.targetTexture != null ? cam.targetTexture.name : "screen")} mode {cam.actualRenderingPath}");
 			Addon.SetPose(yaw, pitch, roll, cam.fieldOfView, mx, my, mz);
+			// where Steve looks: the camera's way, or back at the camera when it is in front of him
+			float headYaw = mode == 2 ? Wrap(yaw + 180f) : yaw, headPitch = mode == 2 ? -pitch : pitch;
 			Vector3 p = player.transform.position;
-			float body = Wrap(player.transform.eulerAngles.y);
-			Send(string.Format(CultureInfo.InvariantCulture,
-				"{{\"t\":\"cam\",\"f\":{0},\"p\":[{1:F4},{2:F4},{3:F4}],\"r\":[{4:F3},{5:F3},{6:F3}],\"fov\":{7:F3},\"fp\":false,\"pl\":[{8:F4},{9:F4},{10:F4}],\"h\":{11:F3} }}",
-				Time.frameCount, mx, my, mz, yaw, pitch, roll, cam.fieldOfView, -p.x, p.y + yOffset, p.z, body));
+			float body = BodyYaw(player, headYaw);
+			link.SendCam(string.Format(CultureInfo.InvariantCulture,
+				"{{\"t\":\"cam\",\"f\":{0},\"p\":[{1:F4},{2:F4},{3:F4}],\"r\":[{4:F3},{5:F3},{6:F3}],\"fov\":{7:F3},\"fp\":{8},\"pl\":[{9:F4},{10:F4},{11:F4}],\"h\":{12:F3},\"look\":[{13:F3},{14:F3}],\"sn\":{15},\"sp\":{16},\"hide\":{17} }}",
+				Time.frameCount, mx, my, mz, yaw, pitch, roll, cam.fieldOfView, mode == 0 ? "true" : "false",
+				-p.x, p.y + yOffset, p.z, body, headYaw, headPitch,
+				Sneaking() ? "true" : "false", Sprinting() && player.GetVelocity().sqrMagnitude > 1f ? "true" : "false", mcHands ? "false" : "true"));
 		}
 
 		private static float Wrap(float a)
@@ -243,31 +231,6 @@ namespace ValCraft
 				lastHands = mcHands;
 				// Minecraft's hotbar shows only while its hands are in use
 				Send(mcHands ? "{\"t\":\"hud\",\"hidden\":false}" : "{\"t\":\"hud\",\"hidden\":true}");
-			}
-			if (!mcHands || InGui())
-				return;
-			bypass = true;
-			try
-			{
-				Button("Attack", "attack");
-				Button("SecondaryAttack", "use");
-				Button("Block", "use");
-				float wheel = ZInput.GetMouseScrollWheel();
-				if (wheel > 0.01f) Send("{\"t\":\"scroll\",\"d\":1}");
-				else if (wheel < -0.01f) Send("{\"t\":\"scroll\",\"d\":-1}");
-				for (int i = 1; i <= 8; i++)
-					if (ZInput.GetButtonDown("Hotbar" + i))
-						Send($"{{\"t\":\"slot\",\"n\":{i - 1}}}");
-				if (ZInput.GetKeyDown(KeyCode.Alpha9, false))
-					Send("{\"t\":\"slot\",\"n\":8}");
-				if (ZInput.GetKeyDown(KeyCode.Q, false))
-					Send("{\"t\":\"key\",\"k\":\"drop\",\"down\":true}");
-				if (ZInput.GetKeyUp(KeyCode.Q, false))
-					Send("{\"t\":\"key\",\"k\":\"drop\",\"down\":false}");
-			}
-			finally
-			{
-				bypass = false;
 			}
 		}
 
@@ -371,11 +334,22 @@ namespace ValCraft
 			var m = Json.Parse(message) as Dictionary<string, object>;
 			if (m == null || !m.TryGetValue("t", out var t))
 				return;
-			switch (t as string)
+			string type = t as string;
+			if (type != "mobs" && type != "proj" && type != "blocks" && type != "mcstate")
+				Log("from Minecraft: " + (message.Length > 160 ? message.Substring(0, 160) : message));
+			switch (type)
 			{
 				case "blocks":
 					Blocks(Json.L(m.TryGetValue("set", out var s) ? s : null), true);
 					Blocks(Json.L(m.TryGetValue("clear", out var c) ? c : null), false);
+					break;
+				case "mcstate":
+					OnMcState(m);
+					break;
+				case "screen":
+					mcScreen = m.TryGetValue("open", out var so) && so is bool sb && sb;
+					if (mcScreen)
+						FocusMinecraft();
 					break;
 				case "mobs":
 					mobBridge.OnMobs(Json.L(m["m"]), ToUnity);
@@ -422,6 +396,7 @@ namespace ValCraft
 				{
 					if (!solid)
 					{
+						ColumnChanged(x, z, -1, go.transform.position);
 						Destroy(go);
 						blocks.Remove(key);
 					}
@@ -435,11 +410,31 @@ namespace ValCraft
 				go.transform.position = new Vector3(-(x + 0.5f), y + 0.5f - yOffset, z + 0.5f);
 				go.AddComponent<BoxCollider>().size = Vector3.one;
 				blocks[key] = go;
+				ColumnChanged(x, z, 1, go.transform.position);
 			}
+		}
+
+		/// <summary>Columns (Minecraft x, z) with a Minecraft block in them, for the grass patch.</summary>
+		private readonly Dictionary<long, int> blockColumns = new Dictionary<long, int>();
+
+		internal bool HasBlockColumn(Vector3 unity)
+		{
+			return blockColumns.Count > 0 && blockColumns.ContainsKey(Column(Mathf.FloorToInt(-unity.x), Mathf.FloorToInt(unity.z)));
+		}
+
+		private void ColumnChanged(int x, int z, int delta, Vector3 at)
+		{
+			long k = Column(x, z);
+			blockColumns.TryGetValue(k, out int n);
+			n += delta;
+			if (n <= 0) blockColumns.Remove(k); else blockColumns[k] = n;
+			if (ClutterSystem.instance != null && ((delta > 0 && n == 1) || n == 0))
+				ClutterSystem.instance.ResetGrass(at, 1.5f);
 		}
 
 		private void ClearBlocks()
 		{
+			blockColumns.Clear();
 			foreach (var go in blocks.Values)
 				if (go != null)
 					Destroy(go);
@@ -616,26 +611,38 @@ namespace ValCraft
 		}
 	}
 
+	/// <summary>Diagnostics: what hurts the local player.</summary>
+	[HarmonyPatch(typeof(Character), nameof(Character.Damage))]
+	internal static class DamageLog
+	{
+		private static void Prefix(Character __instance, HitData hit)
+		{
+			if (__instance == Player.m_localPlayer && hit != null)
+				Plugin.Log($"player hit: {hit.GetTotalDamage():F1} by {hit.m_attacker} type {hit.m_hitType}");
+		}
+	}
+
 	[HarmonyPatch(typeof(ZInput), nameof(ZInput.GetButton))]
 	internal static class ButtonPatch
 	{
-		private static bool Prefix(string name, ref bool __result)
-		{
-			if (!Plugin.Swallow(name))
-				return true;
-			__result = false;
-			return false;
-		}
+		private static bool Prefix(string name, ref bool __result) => !Plugin.Remap(name, ref __result, false);
 	}
 
 	[HarmonyPatch(typeof(ZInput), nameof(ZInput.GetButtonDown))]
 	internal static class ButtonDownPatch
 	{
-		private static bool Prefix(string name, ref bool __result)
+		private static bool Prefix(string name, ref bool __result) => !Plugin.Remap(name, ref __result, true);
+	}
+
+	/// <summary>The wheel is Minecraft's hotbar while Minecraft runs (Valheim would zoom the camera).</summary>
+	[HarmonyPatch(typeof(ZInput), nameof(ZInput.GetMouseScrollWheel))]
+	internal static class WheelPatch
+	{
+		private static bool Prefix(ref float __result)
 		{
-			if (!Plugin.Swallow(name))
+			if (Plugin.bypass || Plugin.I == null || !Plugin.I.On || Plugin.mcScreen || Hud.IsPieceSelectionVisible() || InventoryGui.IsVisible())
 				return true;
-			__result = false;
+			__result = 0f;
 			return false;
 		}
 	}

@@ -78,6 +78,17 @@ final class ClientInput {
 				minecraft.getWindow().setWindowed(w, h);
 				SDLVideo.SDL_SetWindowSize(handle, w, h);
 				SDLVideo.SDL_SyncWindow(handle);
+				if (m.has("x")) {
+					// a borderless, see-through window exactly over the host's picture: invisible, but Minecraft's
+					// screens (inventory, chat) take the mouse there when it is raised (see PassthroughClient)
+					SDLVideo.SDL_SetWindowBordered(handle, false);
+					SDLVideo.SDL_SetWindowPosition(handle, m.get("x").getAsInt(), m.get("y").getAsInt());
+					SDLVideo.SDL_SetWindowOpacity(handle, 0.01F);
+				}
+
+				if (m.has("hwnd")) {
+					HostWindow.hwnd = m.get("hwnd").getAsLong();
+				}
 			}
 			default -> {
 			}

@@ -16,11 +16,14 @@ public final class HostState {
 	 * @param bodyYaw the player's body yaw (third person)
 	 * @param drive Minecraft moves the player (elytra flight) and the host follows; lookYaw/lookPitch steer
 	 * @param gun the player holds one of the host's guns (Steve aims it; his own item isn't drawn)
+	 * @param sneak the host's player crouches, sprint runs (Steve's pose follows)
+	 * @param hide the host draws its own player model this frame (Steve is hidden)
 	 */
 	public record Pose(
 		long hostFrame, double x, double y, double z, float yaw, float pitch, float roll, float fov,
 		boolean firstPerson, double px, double py, double pz, float bodyYaw, long receivedNanos,
-		boolean drive, float lookYaw, float lookPitch, boolean gun
+		boolean drive, float lookYaw, float lookPitch, boolean gun,
+		boolean sneak, boolean sprint, boolean hide
 	) {
 	}
 
@@ -50,7 +53,10 @@ public final class HostState {
 			m.has("drive") && m.get("drive").getAsBoolean(),
 			m.has("look") ? m.getAsJsonArray("look").get(0).getAsFloat() : yaw,
 			m.has("look") ? m.getAsJsonArray("look").get(1).getAsFloat() : r.get(1).getAsFloat(),
-			m.has("gun") && m.get("gun").getAsBoolean()
+			m.has("gun") && m.get("gun").getAsBoolean(),
+			m.has("sn") && m.get("sn").getAsBoolean(),
+			m.has("sp") && m.get("sp").getAsBoolean(),
+			m.has("hide") && m.get("hide").getAsBoolean()
 		);
 	}
 

@@ -1,0 +1,323 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Runtime.InteropServices;
+using BepInEx.Configuration;
+using HarmonyLib;
+using UnityEngine;
+
+namespace ValCraft
+{
+	/// <summary>
+	/// How the two games share the player: the camera (first person / behind / in front, F5), Steve's body and pose,
+	/// Minecraft's controls (Ctrl runs, Shift sneaks, E opens Minecraft's inventory), the two hotbars and the health.
+	/// </summary>
+	public partial class Plugin
+	{
+		/// <summary>0: first person, 1: behind (Valheim's own camera), 2: in front, looking back.</summary>
+		private int camMode;
+		private ConfigEntry<KeyboardShortcut> keyCamera, keyGameMode;
+		private ConfigEntry<int> poseLag;
+		private float bodyYaw = float.NaN;
+		/// <summary>Minecraft's game mode ("creative", "survival", ...), from its "mcstate".</summary>
+		internal static string gameMode = "creative";
+		private bool mcDead;
+		private bool godSet;
+		/// <summary>A Minecraft screen (inventory, chat) has the mouse: Minecraft's window is in front.</summary>
+		internal static bool mcScreen;
+		private string viewSentKey;
+
+		[DllImport("user32.dll")] private static extern IntPtr GetActiveWindow();
+		[DllImport("user32.dll")] private static extern bool GetClientRect(IntPtr h, out RECT r);
+		[DllImport("user32.dll")] private static extern bool ClientToScreen(IntPtr h, ref POINT p);
+		[StructLayout(LayoutKind.Sequential)] private struct RECT { public int L, T, R, B; }
+		[StructLayout(LayoutKind.Sequential)] private struct POINT { public int X, Y; }
+		private IntPtr hwnd;
+
+		private delegate bool EnumProc(IntPtr h, IntPtr l);
+		[DllImport("user32.dll")] private static extern bool EnumWindows(EnumProc f, IntPtr l);
+		[DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);
+		[DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr h);
+		[DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr h);
+		[DllImport("user32.dll")] private static extern bool BringWindowToTop(IntPtr h);
+
+		/// <summary>A Minecraft screen opened: hand it the focus (Valheim is in front, so Windows lets it give the focus away).</summary>
+		internal static void FocusMinecraft()
+		{
+			IntPtr found = IntPtr.Zero;
+			var sb = new System.Text.StringBuilder(256);
+			EnumWindows((h, l) =>
+			{
+				if (!IsWindowVisible(h))
+					return true;
+				sb.Clear();
+				GetWindowText(h, sb, sb.Capacity);
+				if (sb.ToString().StartsWith("Minecraft"))
+				{
+					found = h;
+					return false;
+				}
+				return true;
+			}, IntPtr.Zero);
+			if (found == IntPtr.Zero)
+				return;
+			BringWindowToTop(found);
+			SetForegroundWindow(found);
+		}
+
+		private void BindControls()
+		{
+			keyCamera = Config.Bind("Keys", "Camera", new KeyboardShortcut(KeyCode.F5), "First person / behind / in front");
+			keyGameMode = Config.Bind("Keys", "GameMode", new KeyboardShortcut(KeyCode.F9), "Minecraft creative <-> survival");
+			poseLag = Config.Bind("Render", "PoseLag", 1, "Frames between Valheim's camera update and its picture (Unity's render thread runs a frame behind)");
+		}
+
+		/// <summary>The camera mode in use: Valheim's weapons are drawn on Valheim's own body, which has no first person.</summary>
+		private int CamMode => mcHands ? camMode : (camMode == 0 ? 1 : camMode);
+
+		private void ControlsUpdate(Player player)
+		{
+			if (Key(keyCamera))
+				camMode = (camMode + 1) % 3;
+			if (Key(keyGameMode))
+				Send("{\"t\":\"cmd\",\"c\":\"gamemode " + (gameMode == "creative" ? "survival" : "creative") + " @a\"}");
+			Addon.SetPoseLag(poseLag.Value);
+
+			// creative: nothing hurts; survival: Minecraft's hearts take the hits (see DamagePatch)
+			bool god = gameMode == "creative" || gameMode == "spectator";
+			if (god != godSet || player.InGodMode() != god)
+			{
+				godSet = god;
+				player.SetGodMode(god);
+			}
+
+			// Minecraft's window lies exactly over Valheim's picture (invisible), for its screens to take the mouse
+			if (hwnd == IntPtr.Zero)
+				hwnd = GetActiveWindow();
+			if (hwnd != IntPtr.Zero && GetClientRect(hwnd, out var rc))
+			{
+				var at = new POINT();
+				ClientToScreen(hwnd, ref at);
+				int w = rc.R - rc.L, h = rc.B - rc.T;
+				string key = $"{at.X},{at.Y},{w},{h}";
+				if (w > 0 && h > 0 && key != viewSentKey)
+				{
+					viewSentKey = key;
+					Send($"{{\"t\":\"view\",\"w\":{w},\"h\":{h},\"x\":{at.X},\"y\":{at.Y},\"hwnd\":{hwnd.ToInt64()}}}");
+				}
+			}
+		}
+
+		internal void OnMcState(Dictionary<string, object> m)
+		{
+			gameMode = m.TryGetValue("gm", out var gm) ? gm as string ?? "creative" : "creative";
+			bool dead = m.TryGetValue("dead", out var d) && d is bool b && b;
+			var player = Player.m_localPlayer;
+			if (dead && !mcDead && player != null && !player.IsDead() && gameMode == "survival")
+			{
+				// Minecraft's hearts ran out: the Viking falls too
+				player.SetGodMode(false);
+				godSet = false;
+				var hit = new HitData();
+				hit.m_damage.m_damage = 99999f;
+				DamagePatch.passThrough = true;
+				try { player.Damage(hit); }
+				finally { DamagePatch.passThrough = false; }
+			}
+			mcDead = dead;
+		}
+
+		/// <summary>The camera this frame: first person at the eyes, Valheim's own behind, or in front looking back.</summary>
+		private void PlaceCamera(Camera cam, Player player)
+		{
+			int mode = CamMode;
+			Transform t = cam.transform;
+			if (mode == 0)
+			{
+				t.position = player.m_eye.position;
+				cam.nearClipPlane = 0.05f;
+			}
+			else if (mode == 2)
+			{
+				Vector3 eye = player.m_eye.position, fwd = t.forward;
+				float dist = 3.5f;
+				if (Physics.SphereCast(eye, 0.2f, fwd, out var hit, dist, groundMask, QueryTriggerInteraction.Ignore))
+					dist = Mathf.Max(hit.distance - 0.1f, 0.5f);
+				t.position = eye + fwd * dist;
+				t.rotation = Quaternion.LookRotation(-fwd, Vector3.up);
+				cam.nearClipPlane = 0.05f;
+			}
+		}
+
+		/// <summary>
+		/// Steve's body yaw, the way Minecraft turns a player's body: towards where he walks, and otherwise it follows the
+		/// head once the head has turned more than 50 degrees away.
+		/// </summary>
+		private float BodyYaw(Player player, float headYaw)
+		{
+			Vector3 v = player.GetVelocity();
+			v.y = 0f;
+			if (float.IsNaN(bodyYaw))
+				bodyYaw = headYaw;
+			if (v.sqrMagnitude > 0.5f)
+			{
+				float move = Mathf.Atan2(v.x, v.z) * Mathf.Rad2Deg;
+				// walking backwards: the body keeps facing forwards, as in Minecraft
+				if (Mathf.Abs(Mathf.DeltaAngle(headYaw, move)) > 100f)
+					move += 180f;
+				bodyYaw = Mathf.MoveTowardsAngle(bodyYaw, move, 720f * Time.deltaTime);
+			}
+			float diff = Mathf.DeltaAngle(bodyYaw, headYaw);
+			if (Mathf.Abs(diff) > 50f)
+				bodyYaw = headYaw - Mathf.Sign(diff) * 50f;
+			return Wrap(bodyYaw);
+		}
+
+		// ---------------------------------------------------------------- input
+
+		private void ControlsInput(Player player)
+		{
+			if (InGui() || mcScreen)
+				return;
+			bypass = true;
+			try
+			{
+				// Valheim's hotbar (1-8) takes out Valheim's items: Valheim's hands. The wheel picks Minecraft's hotbar:
+				// Minecraft's hands. Alt + 1-9 picks a Minecraft slot directly.
+				bool alt = ZInput.GetKey(KeyCode.LeftAlt, false);
+				for (int i = 1; i <= 9; i++)
+				{
+					bool down = i <= 8 ? ZInput.GetButtonDown("Hotbar" + i) : ZInput.GetKeyDown(KeyCode.Alpha9, false);
+					if (!down)
+						continue;
+					if (alt || i == 9)
+					{
+						SetHands(true);
+						Send($"{{\"t\":\"slot\",\"n\":{i - 1}}}");
+					}
+					else
+						SetHands(false);
+				}
+				float wheel = ZInput.GetMouseScrollWheel();
+				if (Mathf.Abs(wheel) > 0.01f)
+				{
+					if (!mcHands)
+						SetHands(true);
+					else
+						Send(wheel > 0f ? "{\"t\":\"scroll\",\"d\":1}" : "{\"t\":\"scroll\",\"d\":-1}");
+				}
+
+				// E: Valheim's interaction when looking at something of Valheim's, else Minecraft's inventory
+				if (ZInput.GetButtonDown("Use") && player.GetHoverObject() == null)
+				{
+					Send("{\"t\":\"key\",\"k\":\"inventory\",\"down\":true}");
+					Send("{\"t\":\"key\",\"k\":\"inventory\",\"down\":false}");
+				}
+
+				if (!mcHands)
+					return;
+				Button("Attack", "attack");
+				Button("SecondaryAttack", "use");
+				Button("Block", "use");
+				if (ZInput.GetKeyDown(KeyCode.Q, false))
+					Send("{\"t\":\"key\",\"k\":\"drop\",\"down\":true}");
+				if (ZInput.GetKeyUp(KeyCode.Q, false))
+					Send("{\"t\":\"key\",\"k\":\"drop\",\"down\":false}");
+			}
+			finally
+			{
+				bypass = false;
+			}
+		}
+
+		private void SetHands(bool minecraft)
+		{
+			if (mcHands == minecraft)
+				return;
+			mcHands = minecraft;
+			Message(minecraft ? "Minecraft hands" : "Valheim weapons");
+		}
+
+		/// <summary>The Valheim buttons Minecraft owns while it runs (the original is skipped, the result replaced).</summary>
+		internal static bool Remap(string name, ref bool result, bool down)
+		{
+			if (bypass || I == null || !I.On || InGui() || mcScreen)
+				return false;
+			switch (name)
+			{
+				case "Run":
+					// Minecraft: Ctrl runs
+					result = down ? ZInput.GetKeyDown(KeyCode.LeftControl, false) : ZInput.GetKey(KeyCode.LeftControl, false);
+					return true;
+				case "Crouch":
+					// Minecraft: Shift sneaks
+					result = down ? ZInput.GetKeyDown(KeyCode.LeftShift, false) : ZInput.GetKey(KeyCode.LeftShift, false);
+					return true;
+				case "Use":
+					// E with nothing of Valheim's to use opens Minecraft's inventory instead (ControlsInput)
+					var p = Player.m_localPlayer;
+					if (p != null && p.GetHoverObject() == null)
+					{
+						result = false;
+						return true;
+					}
+					return false;
+				case "Attack":
+				case "SecondaryAttack":
+				case "Block":
+					if (mcHands)
+					{
+						result = false;
+						return true;
+					}
+					return false;
+			}
+			return false;
+		}
+
+		internal static bool Sneaking()
+		{
+			bypass = true;
+			try { return ZInput.GetKey(KeyCode.LeftShift, false); }
+			finally { bypass = false; }
+		}
+
+		internal static bool Sprinting()
+		{
+			bypass = true;
+			try { return ZInput.GetKey(KeyCode.LeftControl, false); }
+			finally { bypass = false; }
+		}
+	}
+
+	/// <summary>Survival: hits on the Viking go to Minecraft's hearts (the HUD shows them), not Valheim's health.</summary>
+	[HarmonyPatch(typeof(Character), nameof(Character.Damage))]
+	internal static class DamagePatch
+	{
+		internal static bool passThrough;
+
+		private static bool Prefix(Character __instance, HitData hit)
+		{
+			if (passThrough || hit == null || __instance != Player.m_localPlayer || Plugin.I == null || Plugin.gameMode != "survival")
+				return true;
+			// Valheim's ~100 health is Minecraft's 20 half-hearts
+			float amount = hit.GetTotalDamage() / 5f;
+			if (amount > 0.01f)
+				Plugin.I.SendRaw(string.Format(CultureInfo.InvariantCulture, "{{\"t\":\"cmd\",\"c\":\"damage @p {0:F2} minecraft:generic\"}}", amount));
+			return false;
+		}
+	}
+
+	/// <summary>No Valheim grass where Minecraft's blocks stand (it would poke through them).</summary>
+	[HarmonyPatch(typeof(ClutterSystem), nameof(ClutterSystem.GetGroundInfo))]
+	internal static class GrassPatch
+	{
+		private static bool Prefix(Vector3 p, ref bool __result)
+		{
+			if (Plugin.I == null || !Plugin.I.HasBlockColumn(p))
+				return true;
+			__result = false;
+			return false;
+		}
+	}
+}

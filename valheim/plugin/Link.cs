@@ -53,6 +53,17 @@ namespace ValCraft
 			wake.Set();
 		}
 
+		private string camMessage;
+
+		/// <summary>The camera: only the newest one is worth sending (older ones would make Minecraft lag behind).</summary>
+		public void SendCam(string message)
+		{
+			if (!connected)
+				return;
+			Interlocked.Exchange(ref camMessage, message);
+			wake.Set();
+		}
+
 		public bool Poll(out string message) => inbox.TryDequeue(out message);
 
 		private void Run()
@@ -78,7 +89,13 @@ namespace ValCraft
 						var reader = Task.Run(() => Receive(ws));
 						while (!stopping && ws.State == WebSocketState.Open && !reader.IsCompleted)
 						{
-							wake.WaitOne(50);
+							wake.WaitOne(20);
+							var cam = Interlocked.Exchange(ref camMessage, null);
+							if (cam != null)
+							{
+								var cb = Encoding.UTF8.GetBytes(cam);
+								ws.SendAsync(new ArraySegment<byte>(cb), WebSocketMessageType.Text, true, CancellationToken.None).Wait();
+							}
 							while (outbox.TryDequeue(out var m))
 							{
 								var bytes = Encoding.UTF8.GetBytes(m);

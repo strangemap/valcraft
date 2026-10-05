@@ -5,6 +5,7 @@ import net.minecraft.client.Minecraft;
 import dev.rehan.passthrough.Passthrough;
 import java.util.Locale;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.player.Abilities;
 import net.minecraft.world.phys.Vec3;
 
@@ -53,12 +54,13 @@ public final class PlayerSync {
 			return;
 		}
 
-		player.setYRot(p.yaw());
-		player.setXRot(p.pitch());
-		player.yRotO = p.yaw();
-		player.xRotO = p.pitch();
-		player.yHeadRot = player.yHeadRotO = p.yaw();
-		player.yBodyRot = player.yBodyRotO = p.firstPerson() ? p.yaw() : p.bodyYaw();
+		// where Steve looks ("look": e.g. back at a camera in front of him), else where the camera looks
+		player.setYRot(p.lookYaw());
+		player.setXRot(p.lookPitch());
+		player.yRotO = p.lookYaw();
+		player.xRotO = p.lookPitch();
+		player.yHeadRot = player.yHeadRotO = p.lookYaw();
+		player.yBodyRot = player.yBodyRotO = p.bodyYaw();
 		// the model stands exactly where the host's player is this frame (not a tick behind, interpolating)
 		double x = p.firstPerson() ? p.x() : p.px();
 		double y = p.firstPerson() ? p.y() - player.getEyeHeight() : p.py();
@@ -67,6 +69,11 @@ public final class PlayerSync {
 		player.xo = player.xOld = x;
 		player.yo = player.yOld = y;
 		player.zo = player.zOld = z;
+		// the host's crouch and run: Steve's pose and walk match (the host moves him, so only the look changes)
+		player.setShiftKeyDown(p.sneak());
+		player.setPose(p.sneak() ? Pose.CROUCHING : Pose.STANDING);
+		player.setSprinting(p.sprint() && !p.sneak());
+		player.setInvisible(p.hide());
 		CameraType cameraType = p.firstPerson() ? CameraType.FIRST_PERSON : CameraType.THIRD_PERSON_BACK;
 		if (minecraft.options.getCameraType() != cameraType) {
 			minecraft.options.setCameraType(cameraType);

@@ -71,6 +71,8 @@ public class PassthroughClient implements ClientModInitializer {
 	/** Server ticks until the setup commands run (the player isn't in the player list yet when JOIN fires). */
 	private static int setupIn = -1;
 	private static int respawnIn;
+	private static boolean screenOpen;
+	private static int stateIn;
 
 	@Override
 	public void onInitializeClient() {
@@ -97,6 +99,29 @@ public class PassthroughClient implements ClientModInitializer {
 		if (minecraft.player != null && minecraft.gui.screen() instanceof DeathScreen && --respawnIn <= 0) {
 			respawnIn = 40;
 			minecraft.player.respawn();
+		}
+
+		if (Passthrough.active) {
+			// a Minecraft screen (inventory, chat, ...) takes the mouse: raise our invisible window over the host's
+			boolean open = minecraft.gui.screen() != null && !(minecraft.gui.screen() instanceof DeathScreen)
+				&& !(minecraft.gui.screen() instanceof TitleScreen);
+			if (open != screenOpen) {
+				screenOpen = open;
+				Passthrough.events.accept("{\"t\":\"screen\",\"open\":" + open + "}");
+				if (open) {
+					HostWindow.raiseMinecraft(minecraft);
+				} else {
+					HostWindow.focusHost();
+				}
+			}
+
+			// the host shows Minecraft's game mode and health (survival: Minecraft's hearts are the player's)
+			if (minecraft.player != null && --stateIn <= 0) {
+				stateIn = 5;
+				Passthrough.events.accept(String.format(java.util.Locale.ROOT, "{\"t\":\"mcstate\",\"gm\":\"%s\",\"hp\":%.2f,\"max\":%.2f,\"dead\":%b}",
+					minecraft.gameMode == null ? "creative" : minecraft.gameMode.getPlayerMode().getName(),
+					minecraft.player.getHealth(), minecraft.player.getMaxHealth(), minecraft.player.isDeadOrDying()));
+			}
 		}
 
 		if (!configured) {
