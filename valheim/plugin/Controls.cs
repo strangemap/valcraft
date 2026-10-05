@@ -24,6 +24,7 @@ namespace ValCraft
 		private float eyeHeight = float.NaN;
 		private bool crouchSet;
 		private ConfigEntry<int> poseLag;
+		private ConfigEntry<int> maxPixels;
 		internal static ConfigEntry<bool> hideGrass;
 		private bool grassHidden;
 		private float bodyYaw = float.NaN;
@@ -121,6 +122,7 @@ namespace ValCraft
 			launchCommand = Config.Bind("Minecraft", "Launcher", @"D:\Dev\ValCraft\prism\prismlauncher.exe", "Launcher that starts the Minecraft half");
 			launchArgs = Config.Bind("Minecraft", "LauncherArgs", "--launch ValCraft", "Its arguments");
 			hideGrass = Config.Bind("Render", "HideValheimGrass", false, "No Valheim grass while Minecraft runs (it hides Minecraft's blocks standing in it)");
+			maxPixels = Config.Bind("Render", "MaxMinecraftPixels", 1600 * 900, "Most pixels Minecraft renders (its picture is scaled up to Valheim's); lower is smoother");
 			poseLag = Config.Bind("Render", "PoseLag", 1, "Frames between Valheim's camera update and its picture (Unity's render thread runs a frame behind)");
 		}
 
@@ -180,7 +182,7 @@ namespace ValCraft
 			if (Key(keyMode))
 				SetHands(!mcHands);
 			// Minecraft's sneak: crouched while Shift is held (Valheim toggles on each press)
-			bool sneak = Sneaking() && !InGui() && !mcScreen;
+			bool sneak = Sneaking() && !InGui() && !mcScreen && !Creative.flying;
 			if (sneak != crouchSet || player.IsCrouching() != sneak)
 			{
 				crouchSet = sneak;
@@ -207,13 +209,11 @@ namespace ValCraft
 			HideMinecraftWindow();
 			Addon.SetPoseLag(poseLag.Value);
 
-			// creative: nothing hurts; survival: Minecraft's hearts take the hits (see DamagePatch)
-			bool god = gameMode == "creative" || gameMode == "spectator";
-			if (god != godSet || player.InGodMode() != god)
-			{
-				godSet = god;
-				player.SetGodMode(god);
-			}
+			// creative: no damage, endless stamina, double-jump flight (see Creative); never Valheim's god mode
+			if (player.InGodMode() && godSet)
+				player.SetGodMode(false);
+			godSet = false;
+			Creative.Tick(player);
 
 			// Minecraft's window lies exactly over Valheim's picture (invisible), for its screens to take the mouse
 			if (hwnd == IntPtr.Zero)
@@ -223,6 +223,15 @@ namespace ValCraft
 				var at = new POINT();
 				ClientToScreen(hwnd, ref at);
 				int w = rc.R - rc.L, h = rc.B - rc.T;
+				// Minecraft renders at most ~MaxPixels (the effect scales its picture up): at 1440p and above a full-size
+				// frame is ~45 MB a frame to read back and upload, and both games stutter. Its screens (inventory, chat)
+				// need the window over the whole picture for the mouse, so it grows only while one is open.
+				if (!mcScreen && (long)w * h > maxPixels.Value)
+				{
+					double k = Math.Sqrt(maxPixels.Value / ((double)w * h));
+					w = (int)(w * k + 0.5);
+					h = (int)(h * k + 0.5);
+				}
 				string key = $"{at.X},{at.Y},{w},{h}";
 				if (w > 0 && h > 0 && key != viewSentKey)
 				{
@@ -359,8 +368,9 @@ namespace ValCraft
 			switch (name)
 			{
 				case "Run":
-					// Minecraft: Ctrl runs
-					result = down ? ZInput.GetKeyDown(KeyCode.LeftControl, false) : ZInput.GetKey(KeyCode.LeftControl, false);
+					bypass = true;
+					try { result = down ? ZInput.GetKeyDown(KeyCode.LeftControl, false) : ZInput.GetKey(KeyCode.LeftControl, false); }
+					finally { bypass = false; }
 					return true;
 				case "Crouch":
 					// Minecraft: Shift held sneaks (set directly in ControlsUpdate); Valheim's toggle never fires
@@ -390,6 +400,8 @@ namespace ValCraft
 			return false;
 		}
 
+		internal static bool InGuiPublic() => InGui();
+
 		internal static bool Sneaking()
 		{
 			bypass = true;
@@ -413,7 +425,12 @@ namespace ValCraft
 
 		private static bool Prefix(Character __instance, HitData hit)
 		{
-			if (passThrough || hit == null || __instance != Player.m_localPlayer || Plugin.I == null || Plugin.gameMode != "survival")
+			if (passThrough || hit == null || __instance != Player.m_localPlayer || Plugin.I == null || !Plugin.I.On)
+				return true;
+			// creative and spectator: nothing hurts the Viking
+			if (Plugin.gameMode == "creative" || Plugin.gameMode == "spectator")
+				return false;
+			if (Plugin.gameMode != "survival" && Plugin.gameMode != "adventure")
 				return true;
 			// Valheim's ~100 health is Minecraft's 20 half-hearts
 			float amount = hit.GetTotalDamage() / 5f;
