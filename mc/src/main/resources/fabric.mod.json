@@ -32,6 +32,6 @@
 		"fabric-api": "*"
 	},
 	"contact": {
-		"sources": "https://github.com/strange/valcraft"
+		"sources": "https://github.com/strangemap/valcraft"
 	}
 }
