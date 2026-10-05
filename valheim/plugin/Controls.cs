@@ -119,7 +119,7 @@ namespace ValCraft
 			keyGameMode = Config.Bind("Keys", "GameMode", new KeyboardShortcut(KeyCode.F9), "Minecraft creative <-> survival");
 			keyMode = Config.Bind("Keys", "Mode", new KeyboardShortcut(KeyCode.R), "Minecraft mode (mouse, 1-9, wheel = Minecraft) <-> Valheim mode (Valheim's weapons and hotbar)");
 			autoStart = Config.Bind("Minecraft", "AutoStart", true, "Start Minecraft (hidden) with Valheim when it isn't running");
-			launchCommand = Config.Bind("Minecraft", "Launcher", @"D:\Dev\ValCraft\prism\prismlauncher.exe", "Launcher that starts the Minecraft half");
+			launchCommand = Config.Bind("Minecraft", "Launcher", System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "ValCraft", "prism", "prismlauncher.exe"), "Launcher that starts the Minecraft half (the installer puts Prism here)");
 			launchArgs = Config.Bind("Minecraft", "LauncherArgs", "--launch ValCraft", "Its arguments");
 			hideGrass = Config.Bind("Render", "HideValheimGrass", false, "No Valheim grass while Minecraft runs (it hides Minecraft's blocks standing in it)");
 			maxPixels = Config.Bind("Render", "MaxMinecraftPixels", 1600 * 900, "Most pixels Minecraft renders (its picture is scaled up to Valheim's); lower is smoother");

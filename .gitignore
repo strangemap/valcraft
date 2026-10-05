@@ -9,3 +9,9 @@ prism/
 backup/
 shots/
 *.log
+dist/
+valheim/addon/third_party/
+gta/
+mc-run.log
+shots*
+

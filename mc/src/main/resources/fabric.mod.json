@@ -2,10 +2,11 @@
 	"schemaVersion": 1,
 	"id": "passthrough",
 	"version": "${version}",
-	"name": "Passthrough",
-	"description": "Runs alongside another game: its camera drives Minecraft's, its collision becomes invisible blocks, and Minecraft's picture (colour + depth) is handed back to be composited into the host game.",
+	"name": "ValCraft",
+	"description": "Minecraft inside Valheim: runs alongside Valheim (ValCraft BepInEx plugin), takes its camera, turns its ground into barriers and hands Minecraft's picture back to be composited. Based on universal-modder's Minecraft x GTA V passthrough.",
 	"authors": [
-		"rehan"
+		"strange",
+		"rehan (universal-modder)"
 	],
 	"license": "MIT",
 	"environment": "*",
@@ -29,5 +30,8 @@
 		"minecraft": "~26.3",
 		"java": ">=25",
 		"fabric-api": "*"
+	},
+	"contact": {
+		"sources": "https://github.com/strange/valcraft"
 	}
 }
