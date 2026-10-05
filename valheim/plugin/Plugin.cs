@@ -234,6 +234,7 @@ namespace ValCraft
 			Vector3 c = t.position;
 			double mx = -c.x, my = c.y + yOffset, mz = c.z;
 			Addon.SetPlanes(cam.nearClipPlane, cam.farClipPlane);
+			UnityDepth();
 			Addon.SetPose(yaw, pitch, roll, cam.fieldOfView, mx, my, mz);
 			// where Steve looks: the camera's way, or back at the camera when it is in front of him
 			float headYaw = mode == 2 ? Wrap(yaw + 180f) : yaw, headPitch = mode == 2 ? -pitch : pitch;
@@ -244,6 +245,29 @@ namespace ValCraft
 				Time.frameCount, mx, my, mz, yaw, pitch, roll, cam.fieldOfView, mode == 0 ? "true" : "false",
 				-p.x, p.y + yOffset, p.z, body, headYaw, headPitch,
 				Sneaking() ? "true" : "false", Sprinting() && player.GetVelocity().sqrMagnitude > 1f ? "true" : "false", mcHands ? "false" : "true"));
+		}
+
+		private static readonly int depthTexId = Shader.PropertyToID("_CameraDepthTexture");
+		private Texture depthTex;
+		private IntPtr depthPtr;
+
+		/// <summary>Unity's camera depth for the add-on to test Minecraft against (the whole opaque scene of this frame).</summary>
+		private void UnityDepth()
+		{
+			var t = Shader.GetGlobalTexture(depthTexId);
+			if (t == null)
+				return;
+			if (t != depthTex || Time.frameCount % 30 == 0)
+			{
+				depthTex = t;
+				IntPtr p = t.GetNativeTexturePtr();
+				if (p != depthPtr)
+				{
+					depthPtr = p;
+					Addon.SetUnityDepth(p);
+					Log($"Unity depth: {t.name} {t.width}x{t.height} {(t is RenderTexture rt ? rt.format.ToString() : t.GetType().Name)}");
+				}
+			}
 		}
 
 		private static float Wrap(float a)

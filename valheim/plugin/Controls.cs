@@ -24,6 +24,8 @@ namespace ValCraft
 		private float eyeHeight = float.NaN;
 		private bool crouchSet;
 		private ConfigEntry<int> poseLag;
+		internal static ConfigEntry<bool> hideGrass;
+		private bool grassHidden;
 		private float bodyYaw = float.NaN;
 		/// <summary>Minecraft's game mode ("creative", "survival", ...), from its "mcstate".</summary>
 		internal static string gameMode = "creative";
@@ -79,6 +81,7 @@ namespace ValCraft
 			autoStart = Config.Bind("Minecraft", "AutoStart", true, "Start Minecraft (hidden) with Valheim when it isn't running");
 			launchCommand = Config.Bind("Minecraft", "Launcher", @"D:\Dev\ValCraft\prism\prismlauncher.exe", "Launcher that starts the Minecraft half");
 			launchArgs = Config.Bind("Minecraft", "LauncherArgs", "--launch ValCraft", "Its arguments");
+			hideGrass = Config.Bind("Render", "HideValheimGrass", false, "No Valheim grass while Minecraft runs (it hides Minecraft's blocks standing in it)");
 			poseLag = Config.Bind("Render", "PoseLag", 1, "Frames between Valheim's camera update and its picture (Unity's render thread runs a frame behind)");
 		}
 
@@ -101,6 +104,7 @@ namespace ValCraft
 		}
 
 		private bool spin;
+		private float spinSpeed = 90f;
 
 		/// <summary>Test oracle: while BepInEx/config/valcraft.spin exists the view turns by itself (camera-sync checks).</summary>
 		private void DebugSpin(Player player)
@@ -109,18 +113,30 @@ namespace ValCraft
 			{
 				string f = System.IO.Path.Combine(BepInEx.Paths.ConfigPath, "valcraft.spin");
 				spin = System.IO.File.Exists(f);
-				if (spin && int.TryParse(System.IO.File.ReadAllText(f).Trim(), out int cm))
-					camMode = cm;
+				if (spin)
+				{
+					// "<camera mode> <pose lag> <degrees per second>"
+					var a = System.IO.File.ReadAllText(f).Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+					if (a.Length > 0 && int.TryParse(a[0], out int cm)) camMode = cm;
+					if (a.Length > 1 && int.TryParse(a[1], out int lag)) poseLag.Value = lag;
+					if (a.Length > 2 && float.TryParse(a[2], NumberStyles.Float, CultureInfo.InvariantCulture, out float sp)) spinSpeed = sp;
+				}
 			}
 			if (!spin)
 				return;
 			Vector3 d = player.GetLookDir();
-			player.SetLookDir(Quaternion.Euler(0f, 90f * Time.deltaTime, 0f) * d);
+			player.SetLookDir(Quaternion.Euler(0f, spinSpeed * Time.deltaTime, 0f) * d);
 		}
 
 		private void ControlsUpdate(Player player)
 		{
 			DebugSpin(player);
+			// Valheim's grass off while Minecraft runs: rebuild the patches when that changes
+			if (hideGrass.Value != grassHidden && ClutterSystem.instance != null)
+			{
+				grassHidden = hideGrass.Value;
+				ClutterSystem.instance.ResetGrass(player.transform.position, 1000f);
+			}
 			if (Key(keyMode))
 				SetHands(!mcHands);
 			// Minecraft's sneak: crouched while Shift is held (Valheim toggles on each press)
@@ -358,7 +374,7 @@ namespace ValCraft
 	{
 		private static bool Prefix(Vector3 p, ref bool __result)
 		{
-			if (Plugin.I == null || !Plugin.I.HasBlockColumn(p))
+			if (Plugin.I == null || !Plugin.I.On || !(Plugin.hideGrass.Value || Plugin.I.HasBlockColumn(p)))
 				return true;
 			__result = false;
 			return false;

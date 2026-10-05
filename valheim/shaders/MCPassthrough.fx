@@ -8,6 +8,10 @@
 texture MCWorldTex : MCWORLD;
 texture MCDepthTex : MCDEPTH;
 texture MCOverlayTex : MCOVERLAY;
+// Valheim: Unity's camera depth (_CameraDepthTexture), bound by the add-on; UseValDepth says it is there.
+texture ValDepthTex : VALDEPTH;
+sampler sValDepth { Texture = ValDepthTex; MinFilter = POINT; MagFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; };
+uniform bool UseValDepth = false;
 sampler sWorld { Texture = MCWorldTex; AddressU = CLAMP; AddressV = CLAMP; };
 sampler sDepth { Texture = MCDepthTex; MinFilter = POINT; MagFilter = POINT; AddressU = CLAMP; AddressV = CLAMP; };
 sampler sOverlay { Texture = MCOverlayTex; AddressU = CLAMP; AddressV = CLAMP; };
@@ -22,7 +26,7 @@ uniform bool McActive = false;
 
 uniform bool HostReversedZ < ui_label = "Valheim depth is reversed"; > = true;
 uniform float DepthBias < ui_type = "drag"; ui_min = 0.0; ui_max = 1.0; ui_step = 0.005; ui_label = "Depth bias (m)";
-	ui_tooltip = "How far behind Valheim's surface Minecraft may still show (blocks resting in Valheim's grass)."; > = 0.3;
+	ui_tooltip = "How far behind Valheim's surface Minecraft may still show (blocks resting on uneven ground)."; > = 0.5;
 uniform float SlopeBias < ui_type = "drag"; ui_min = 0.0; ui_max = 40.0; ui_step = 0.1; ui_label = "Depth bias per grazing slope";
 	ui_tooltip = "Extra depth bias where Valheim's surface is seen at a grazing angle (its depth changes fast down the screen): Minecraft ground laid into Valheim's (lava, netherrack) still shows far away."; > = 0.0;
 uniform float MaxBias < ui_type = "drag"; ui_min = 0.1; ui_max = 10.0; ui_step = 0.1; ui_label = "Largest depth bias (m)"; > = 3.0;
@@ -36,10 +40,10 @@ uniform float LightTint < ui_type = "drag"; ui_min = 0.0; ui_max = 1.0; ui_step 
 uniform float LightBlur < ui_type = "drag"; ui_min = 1.0; ui_max = 6.0; ui_step = 0.1; ui_label = "Light blur (mip)"; > = 3.2;
 uniform float GradeMatch < ui_type = "drag"; ui_min = 0.0; ui_max = 1.0; ui_step = 0.01; ui_label = "Match Valheim colour grade";
 	ui_tooltip = "Give Minecraft the colour of Valheim's whole picture (a red Nether night, an orange sunset), as Valheim's own grading does to its world."; > = 0.55;
-uniform float HazeStart < ui_type = "drag"; ui_min = 0.0; ui_max = 200.0; ui_step = 1.0; ui_label = "Haze start (m)"; > = 15.0;
+uniform float HazeStart < ui_type = "drag"; ui_min = 0.0; ui_max = 200.0; ui_step = 1.0; ui_label = "Haze start (m)"; > = 40.0;
 uniform float HazeDistance < ui_type = "drag"; ui_min = 10.0; ui_max = 1000.0; ui_step = 1.0; ui_label = "Haze distance (m)";
 	ui_tooltip = "Far away, Minecraft fades into the Valheim picture around it (Valheim's haze and fog don't reach Minecraft otherwise)."; > = 160.0;
-uniform float HazeStrength < ui_type = "drag"; ui_min = 0.0; ui_max = 1.0; ui_step = 0.01; ui_label = "Haze strength"; > = 0.85;
+uniform float HazeStrength < ui_type = "drag"; ui_min = 0.0; ui_max = 1.0; ui_step = 0.01; ui_label = "Haze strength"; > = 0.4;
 uniform float EdgeSoftness < ui_type = "drag"; ui_min = 0.0; ui_max = 1.0; ui_step = 0.01; ui_label = "Soften Minecraft's edges";
 	ui_tooltip = "Anti-alias where Minecraft meets Valheim (Valheim's own anti-aliasing ran before Minecraft was added)."; > = 1.0;
 uniform float ContactShadow < ui_type = "drag"; ui_min = 0.0; ui_max = 1.0; ui_step = 0.01; ui_label = "Contact shadows";
@@ -146,7 +150,7 @@ void PS_Composite(float4 pos : SV_Position, float2 uv : TEXCOORD, out float4 out
 	// Where this Valheim pixel's view ray lands in Minecraft's frame.
 	float2 muv = ouv;
 	bool inside = true;
-	const float zh = host_linear(tex2Dlod(ReShade::DepthBuffer, float4(uv, 0, 0)).x);
+	const float zh = host_linear((UseValDepth ? tex2Dlod(sValDepth, float4(uv, 0, 0)).x : tex2Dlod(ReShade::DepthBuffer, float4(uv, 0, 0)).x));
 	// how far behind Valheim's surface Minecraft may still show: more where that surface is seen at a grazing angle
 	const float allow = min(DepthBias + SlopeBias * abs(ddy(zh)), max(MaxBias, DepthBias));
 	float zm = 1e9;

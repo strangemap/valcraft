@@ -29,4 +29,6 @@ namespace compositor
 	void backbuffer_size(int &width, int &height);
 	/// Valheim: Unity render-thread callback that composites before the UI (see GL.IssuePluginEvent).
 	void __stdcall render_event(int event_id);
+	/// Valheim: Unity's camera depth texture (ID3D11Texture2D*), the depth Minecraft is tested against.
+	void set_unity_depth(void *texture);
 }

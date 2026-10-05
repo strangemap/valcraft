@@ -15,7 +15,8 @@
 		"KeyMappingAccessor",
 		"LocalPlayerMixin",
 		"ToastManagerMixin",
-		"LevelRendererMixin"
+		"LevelRendererMixin",
+		"MultiPlayerGameModeMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

@@ -24,6 +24,8 @@ namespace ValCraft
 		private static Float2Fn setPlanes;
 		private static PoseFn setPose;
 		private static SizeFn size;
+		[UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate void PtrArgFn(IntPtr p);
+		private static PtrArgFn setUnityDepth;
 		[UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate IntPtr PtrFn();
 		/// <summary>The add-on's Unity render-thread callback (composite before the UI), for GL.IssuePluginEvent.</summary>
 		public static IntPtr RenderEvent { get; private set; }
@@ -44,12 +46,16 @@ namespace ValCraft
 			setPlanes = F<Float2Fn>("vc_set_host_planes");
 			setPose = F<PoseFn>("vc_set_host_pose");
 			size = F<SizeFn>("vc_backbuffer_size");
+			if (GetProcAddress(m, "vc_set_unity_depth") != IntPtr.Zero)
+				setUnityDepth = F<PtrArgFn>("vc_set_unity_depth");
 			IntPtr re = GetProcAddress(m, "vc_render_event_func");
 			if (re != IntPtr.Zero)
 				RenderEvent = Marshal.GetDelegateForFunctionPointer<PtrFn>(re)();
 			Loaded = true;
 			Plugin.Log("ReShade add-on found");
 		}
+
+		public static void SetUnityDepth(IntPtr texture) => setUnityDepth?.Invoke(texture);
 
 		public static void SetActive(bool on) => setActive?.Invoke(on ? 1 : 0);
 		public static void SetPoseLag(int frames) => setPoseLag?.Invoke(frames);

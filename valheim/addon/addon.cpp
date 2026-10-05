@@ -21,6 +21,7 @@ extern "C"
 	__declspec(dllexport) void vc_set_look(float light, float bias, float slope) { compositor::set_look(light, bias, slope); }
 	__declspec(dllexport) void vc_set_screen_fx(float sx, float sy, float roll, float warp) { compositor::set_screen_fx(sx, sy, roll, warp); }
 	__declspec(dllexport) void vc_backbuffer_size(int *w, int *h) { compositor::backbuffer_size(*w, *h); }
+	__declspec(dllexport) void vc_set_unity_depth(void *texture) { compositor::set_unity_depth(texture); }
 	__declspec(dllexport) void *vc_render_event_func() { return reinterpret_cast<void *>(&compositor::render_event); }
 }
 

@@ -125,8 +125,15 @@ namespace
 		return dev->create_resource_view(layer.tex, resource_usage::shader_resource, resource_view_desc(fmt), &layer.srv);
 	}
 
+	// Valheim: Unity's own camera depth (_CameraDepthTexture, this frame's opaque scene), handed over by the plugin.
+	// ReShade's generic depth buffer pick turned out to be an incomplete copy (rocks missing, foliage in).
+	std::atomic<void *> g_unityDepth{nullptr};
+	void *g_unityDepthFor = nullptr;
+	resource_view g_unityDepthSrv = {0};
+
 	void bind(effect_runtime *runtime)
 	{
+		runtime->update_texture_bindings("VALDEPTH", g_unityDepthSrv, g_unityDepthSrv);
 		runtime->update_texture_bindings("MCWORLD", g_world.srv, g_world.srv);
 		runtime->update_texture_bindings("MCDEPTH", g_depth.srv, g_depth.srv);
 		runtime->update_texture_bindings("MCOVERLAY", g_overlay.srv, g_overlay.srv);
@@ -294,6 +301,8 @@ namespace
 			runtime->set_uniform_value_bool(v, on);
 		if (!on)
 			return;
+		if (const effect_uniform_variable v = runtime->find_uniform_variable(kEffect, "UseValDepth"); v.handle != 0)
+			runtime->set_uniform_value_bool(v, g_unityDepthSrv.handle != 0);
 		if (const effect_uniform_variable v = runtime->find_uniform_variable(kEffect, "McPlanes"); v.handle != 0)
 			runtime->set_uniform_value_float(v, g_mcNear, g_mcFar, float(g_mcFlags));
 		// a scene's look overrides the preset's light matching and depth bias; the preset's values come back after
@@ -386,6 +395,8 @@ namespace
 }
 
 #include <d3d11.h>
+#include <cstdio>
+#include <utility>
 
 namespace compositor
 {
@@ -402,6 +413,59 @@ namespace compositor
 		ID3D11RenderTargetView *rtv = nullptr;
 		ID3D11DepthStencilView *dsv = nullptr;
 		ctx->OMGetRenderTargets(1, &rtv, &dsv);
+		// The depth tested against: the depth buffer bound right now (this frame's camera depth), else the texture the
+		// plugin handed over. A view on it is made once per resource (Unity reuses a few pooled depth targets).
+		void *current = g_unityDepth.load();
+		if (dsv != nullptr)
+		{
+			ID3D11Resource *dres = nullptr;
+			dsv->GetResource(&dres);
+			if (dres)
+			{
+				current = dres;
+				dres->Release(); // still alive: bound by Unity
+			}
+		}
+		if (void *tex = current; tex != g_unityDepthFor)
+		{
+			g_unityDepthFor = tex;
+			g_unityDepthSrv = {0};
+			static std::pair<void *, ID3D11ShaderResourceView *> cache[8];
+			for (auto &c : cache)
+				if (c.first == tex)
+					g_unityDepthSrv = {reinterpret_cast<uint64_t>(c.second)};
+			if (tex != nullptr && g_unityDepthSrv.handle == 0)
+			{
+				auto *t2d = static_cast<ID3D11Texture2D *>(tex);
+				D3D11_TEXTURE2D_DESC td = {};
+				t2d->GetDesc(&td);
+				D3D11_SHADER_RESOURCE_VIEW_DESC sd = {};
+				sd.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+				sd.Texture2D.MipLevels = 1;
+				switch (td.Format)
+				{
+				case DXGI_FORMAT_R32_TYPELESS: case DXGI_FORMAT_D32_FLOAT: case DXGI_FORMAT_R32_FLOAT: sd.Format = DXGI_FORMAT_R32_FLOAT; break;
+				case DXGI_FORMAT_R24G8_TYPELESS: case DXGI_FORMAT_D24_UNORM_S8_UINT: sd.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS; break;
+				case DXGI_FORMAT_R32G8X24_TYPELESS: case DXGI_FORMAT_D32_FLOAT_S8X24_UINT: sd.Format = DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS; break;
+				case DXGI_FORMAT_R16_TYPELESS: case DXGI_FORMAT_D16_UNORM: sd.Format = DXGI_FORMAT_R16_UNORM; break;
+				default: sd.Format = td.Format; break;
+				}
+				ID3D11ShaderResourceView *srv = nullptr;
+				if (SUCCEEDED(dev->CreateShaderResourceView(t2d, &sd, &srv)))
+				{
+					g_unityDepthSrv = {reinterpret_cast<uint64_t>(srv)};
+					static int next = 0;
+					if (cache[next].second)
+						cache[next].second->Release();
+					cache[next] = {tex, srv};
+					next = (next + 1) % 8;
+				}
+				char msg[160];
+				snprintf(msg, sizeof(msg), "MCPassthrough: Unity depth %ux%u format %d -> %s", td.Width, td.Height, int(td.Format), srv ? "ok" : "FAILED");
+				reshade::log::message(reshade::log::level::info, msg);
+			}
+			bind(runtime);
+		}
 		if (rtv != nullptr)
 		{
 			// only a target the size of the back buffer (the effect's textures are that size)
@@ -468,6 +532,11 @@ namespace compositor
 	{
 		g_hostNear = near_clip;
 		g_hostFar = far_clip;
+	}
+
+	void set_unity_depth(void *texture)
+	{
+		g_unityDepth = texture;
 	}
 
 	void backbuffer_size(int &width, int &height)
