@@ -91,3 +91,29 @@ namespace ValCraft
 		}
 	}
 }
+
+namespace ValCraft
+{
+	/// <summary>
+	/// Valheim's "3D resolution limit" renders the world into a smaller texture and scales it up; Minecraft is composited
+	/// into the camera's picture at full size, so while it runs the world renders at full size.
+	/// </summary>
+	[HarmonyLib.HarmonyPatch(typeof(UpscaledFrameBuffer), "UpdateCameraTarget")]
+	internal static class FullResolutionPatch
+	{
+		private static readonly System.Reflection.FieldInfo scaled = HarmonyLib.AccessTools.Field(typeof(UpscaledFrameBuffer), "m_isUsingScaledRendering");
+
+		private static bool Prefix(UpscaledFrameBuffer __instance)
+		{
+			if (Plugin.I == null || !Plugin.I.On)
+				return true;
+			if (scaled != null && (bool)scaled.GetValue(__instance))
+			{
+				HarmonyLib.AccessTools.Method(typeof(UpscaledFrameBuffer), "ReleaseTextureIfExists")?.Invoke(__instance, null);
+				HarmonyLib.AccessTools.Method(typeof(UpscaledFrameBuffer), "DestroyClearCameraIfExists")?.Invoke(__instance, null);
+				scaled.SetValue(__instance, false);
+			}
+			return false;
+		}
+	}
+}

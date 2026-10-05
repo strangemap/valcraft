@@ -440,6 +440,13 @@ namespace ValCraft
 					Blocks(Json.L(m.TryGetValue("set", out var s) ? s : null), true);
 					Blocks(Json.L(m.TryGetValue("clear", out var c) ? c : null), false);
 					break;
+				case "pteleport":
+				{
+					// Minecraft moved the player (an ender pearl landed, /tp): the Viking goes there too
+					var tp = Json.L(m["pos"]);
+					MovePlayer(ToUnity(Json.D(tp[0]), Json.D(tp[1]), Json.D(tp[2])) + Vector3.up * 0.1f);
+					break;
+				}
 				case "mcstate":
 					OnMcState(m);
 					break;
@@ -643,7 +650,13 @@ namespace ValCraft
 						var ch = rh.collider.GetComponentInParent<Character>();
 						if (ch == Player.m_localPlayer)
 							ch = null;
-						if (kind == "firework")
+						if (kind == "pearl")
+						{
+							// an ender pearl hit something of Valheim's: the Viking lands there (backed off the surface)
+							MovePlayer(rh.point - d.normalized * 0.6f + Vector3.up * 0.1f);
+							Send($"{{\"t\":\"projhit\",\"id\":{id},\"pos\":{ToMc(rh.point)},\"stick\":false}}");
+						}
+						else if (kind == "firework")
 						{
 							Explosion(rh.point, 2.5f);
 							Send($"{{\"t\":\"projhit\",\"id\":{id},\"pos\":{ToMc(rh.point)},\"stick\":false}}");
@@ -679,6 +692,24 @@ namespace ValCraft
 					gone.Add(id);
 			foreach (var id in gone)
 				projectiles.Remove(id);
+		}
+
+		private static readonly System.Reflection.FieldInfo maxAirAltitude = AccessTools.Field(typeof(Character), "m_maxAirAltitude");
+
+		/// <summary>Puts the Viking somewhere else at once (no fall damage from where he was).</summary>
+		private static void MovePlayer(Vector3 to)
+		{
+			var p = Player.m_localPlayer;
+			if (p == null)
+				return;
+			var body = p.GetComponent<Rigidbody>();
+			p.transform.position = to;
+			if (body != null)
+			{
+				body.position = to;
+				body.linearVelocity = Vector3.zero;
+			}
+			maxAirAltitude?.SetValue(p, to.y);
 		}
 
 		/// <summary>TNT, creepers, fireworks: Valheim's creatures, trees and buildings around take the blast, and the ground is cratered.</summary>

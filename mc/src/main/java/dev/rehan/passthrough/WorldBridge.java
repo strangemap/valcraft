@@ -145,6 +145,8 @@ public final class WorldBridge {
 
 			if (e instanceof AbstractArrow arrow && !arrow.entityTags().contains(HIT_TAG) && arrow.getDeltaMovement().lengthSqr() > 1.0E-4) {
 				kind = "arrow";
+			} else if (e instanceof net.minecraft.world.entity.projectile.throwableitemprojectile.ThrownEnderpearl) {
+				kind = "pearl"; // the host traces it through its own world (trees, rocks) and moves its player there
 			} else if (e instanceof FireworkRocketEntity rocket && rocket.isShotAtAngle()) {
 				kind = "firework"; // not the ones boosting an elytra flight
 			}
@@ -177,6 +179,8 @@ public final class WorldBridge {
 				e.setPos(x, y, z);
 				level.broadcastEntityEvent(e, (byte) 17);
 				e.discard();
+			} else if (e instanceof net.minecraft.world.entity.projectile.throwableitemprojectile.ThrownEnderpearl) {
+				e.discard(); // landed on the host's side: the host moved its player there itself
 			} else if (e instanceof AbstractArrow) {
 				if (stick) {
 					e.setPos(x, y, z);

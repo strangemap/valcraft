@@ -93,6 +93,9 @@ public final class PlayerSync {
 		player.xRotO = p.lookPitch();
 		player.yHeadRot = player.yHeadRotO = p.lookYaw();
 		player.yBodyRot = player.yBodyRotO = p.bodyYaw();
+		// the sneak pose too: Minecraft's tick stands him back up from its own (unpressed) Shift
+		player.setShiftKeyDown(p.sneak());
+		player.setPose(p.sneak() ? Pose.CROUCHING : Pose.STANDING);
 	}
 
 	/**
