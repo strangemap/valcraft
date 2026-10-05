@@ -58,7 +58,7 @@ uniform float3 Shake = float3(0.0, 0.0, 0.0);
 uniform float PortalWarp = 0.0;
 uniform float Timer < source = "timer"; >;
 uniform int DebugView < ui_type = "combo"; ui_items = "Composite\0Valheim depth (1 m bands)\0Minecraft depth (1 m bands)\0Depth difference\0"; > = 0;
-uniform bool Reproject < ui_label = "Re-project to Valheim's camera"; ui_tooltip = "Rotate Minecraft's (slightly older) frame onto Valheim's current camera."; > = false;
+uniform bool Reproject < ui_label = "Re-project to Valheim's camera"; ui_tooltip = "Rotate Minecraft's (slightly older) frame onto Valheim's current camera."; > = true;
 uniform float PosePrediction < ui_type = "drag"; ui_min = -2.0; ui_max = 3.0; ui_step = 0.05; ui_label = "Pose prediction (frames)";
 	ui_tooltip = "Extrapolate Valheim's camera rotation by this many frames before re-projecting."; > = 0.0;
 
@@ -70,6 +70,10 @@ uniform float3 WarpRow2 = float3(0.0, 0.0, 1.0);
 uniform float3 WarpTan = float3(0.7, 0.7, 1.7777);
 // Set by the add-on: Valheim's camera position relative to Minecraft's, in Minecraft's camera space.
 uniform float3 WarpT = float3(0.0, 0.0, 0.0);
+// Set by the add-on: distance from the camera to the player. Minecraft nearer than this (+ a margin) is Steve and his
+// hand: drawn as rendered (he moves with the camera); only what lies beyond is re-projected.
+uniform float PlayerDist = 0.0;
+uniform float SteveMargin < ui_type = "drag"; ui_min = 0.0; ui_max = 3.0; ui_step = 0.05; ui_label = "Steve depth margin (m)"; > = 0.6;
 
 // Valheim's picture at quarter size with mips: its blurred levels stand in for the light around each pixel.
 texture GtaLightTex { Width = BUFFER_WIDTH / 4; Height = BUFFER_HEIGHT / 4; Format = RGBA8; MipLevels = 7; };
@@ -178,6 +182,8 @@ void PS_Composite(float4 pos : SV_Position, float2 uv : TEXCOORD, out float4 out
 			const float zmv = mc_linear(tex2Dlod(sDepth, float4(n * 0.5 + 0.5, 0, 0)).r);
 			if (zmv > -pm.z + 0.03)
 				continue; // still in front of whatever Minecraft drew there
+			if (zmv < PlayerDist + SteveMargin)
+				continue; // Steve: drawn unwarped below
 			// crossed Minecraft's surface: settle on it (fixed-point on the surface point's Valheim depth)
 			float zg = z;
 			ndc = n;
@@ -203,7 +209,18 @@ void PS_Composite(float4 pos : SV_Position, float2 uv : TEXCOORD, out float4 out
 			break;
 		}
 	}
-	const float4 world = inside ? tex2D(sWorld, muv) : 0.0;
+	float4 world = inside ? tex2D(sWorld, muv) : 0.0;
+	if (Reproject)
+	{
+		// Steve and his hand, as rendered: they move with the camera, so re-projecting them would make them shake
+		const float zu = mc_linear(tex2Dlod(sDepth, float4(ouv, 0, 0)).r);
+		const float4 wu = tex2D(sWorld, ouv);
+		if (wu.a > 0.0 && zu < PlayerDist + SteveMargin && zu < zm)
+		{
+			world = wu;
+			zm = zu;
+		}
+	}
 	if (!Reproject)
 		zm = mc_linear(tex2D(sDepth, muv).r);
 

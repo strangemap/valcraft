@@ -249,11 +249,13 @@ namespace ValCraft
 			Addon.SetPlanes(cam.nearClipPlane, cam.farClipPlane);
 			occluders.Frame(cam, player.transform, blockRoot != null ? blockRoot.transform : null);
 			OccluderDepth();
-			Addon.SetPose(yaw, pitch, roll, cam.fieldOfView, mx, my, mz);
+
 			// where Steve looks: the camera's way, or back at the camera when it is in front of him
 			float headYaw = mode == 2 ? Wrap(yaw + 180f) : yaw, headPitch = mode == 2 ? -pitch : pitch;
 			Vector3 p = SmoothPos(player);
 			float body = BodyYaw(player, headYaw);
+			// re-projection works in the player's frame (see FrameExporter): camera minus feet, in Minecraft coordinates
+			Addon.SetPose(yaw, pitch, roll, cam.fieldOfView, mx - (-p.x), my - (p.y + yOffset), mz - p.z);
 			link.SendCam(string.Format(CultureInfo.InvariantCulture,
 				"{{\"t\":\"cam\",\"f\":{0},\"p\":[{1:F4},{2:F4},{3:F4}],\"r\":[{4:F3},{5:F3},{6:F3}],\"fov\":{7:F3},\"fp\":{8},\"pl\":[{9:F4},{10:F4},{11:F4}],\"h\":{12:F3},\"look\":[{13:F3},{14:F3}],\"sn\":{15},\"sp\":{16},\"hide\":{17} }}",
 				Time.frameCount, mx, my, mz, yaw, pitch, roll, cam.fieldOfView, mode == 0 ? "true" : "false",

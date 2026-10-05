@@ -372,6 +372,10 @@ namespace
 		for (int i = 0; i < 3; ++i)
 			if (const effect_uniform_variable v = runtime->find_uniform_variable(kEffect, rows[i]); v.handle != 0)
 				runtime->set_uniform_value_float(v, m[i][0], m[i][1], m[i][2]);
+		// Valheim: host positions are camera-minus-player, so their length is how far the player is from the camera.
+		// Everything that near (Steve, his hand) is composited as rendered, only the world beyond is re-projected.
+		if (const effect_uniform_variable v = runtime->find_uniform_variable(kEffect, "PlayerDist"); v.handle != 0)
+			runtime->set_uniform_value_float(v, host.valid ? float(std::sqrt(host.x * host.x + host.y * host.y + host.z * host.z)) : 0.0f);
 		if (const effect_uniform_variable v = runtime->find_uniform_variable(kEffect, "WarpT"); v.handle != 0)
 			runtime->set_uniform_value_float(v, t[0], t[1], t[2]);
 		const float d2r = 3.14159265f / 180.0f;

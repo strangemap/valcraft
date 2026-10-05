@@ -239,9 +239,11 @@ public final class FrameExporter {
 			m.set(FLOAT, desc + 36, c.far);
 			m.set(FLOAT, desc + 40, p.fov());
 			m.set(INT, desc + 44, (RenderSystem.getDevice().getDeviceInfo().isZZeroToOne() ? 1 : 0) | 2 | 4);
-			m.set(DOUBLE, desc + 48, p.x());
-			m.set(DOUBLE, desc + 56, p.y());
-			m.set(DOUBLE, desc + 64, p.z());
+			// the camera relative to the player: the host re-projects in the player's frame, so Steve (who moves with
+			// the camera) stays put while turning is corrected; the world's own lag while walking is a few centimetres
+			m.set(DOUBLE, desc + 48, p.x() - p.px());
+			m.set(DOUBLE, desc + 56, p.y() - p.py());
+			m.set(DOUBLE, desc + 64, p.z() - p.pz());
 			m.set(FLOAT, desc + 72, p.yaw());
 			m.set(FLOAT, desc + 76, p.pitch());
 			m.set(FLOAT, desc + 80, p.roll());
