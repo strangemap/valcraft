@@ -3,7 +3,10 @@ package dev.rehan.passthrough.client;
 import com.google.gson.JsonObject;
 import dev.rehan.passthrough.Passthrough;
 import dev.rehan.passthrough.client.mixin.KeyMappingAccessor;
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
+import net.minecraft.client.gui.screens.debug.GameModeSwitcherScreen;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -51,6 +54,20 @@ final class ClientInput {
 					}
 
 					key.setDown(down);
+				}
+			}
+			case "gms" -> {
+				// F3+F4 held in the host's window: Minecraft's game mode switcher, shown over the host's picture and
+				// driven from there ("open", "next" on each F4, "apply" when F3 is let go)
+				String op = m.get("op").getAsString();
+				if (op.equals("open") && !(minecraft.gui.screen() instanceof GameModeSwitcherScreen)) {
+					minecraft.gui.setScreen(new GameModeSwitcherScreen());
+				} else if (minecraft.gui.screen() instanceof GameModeSwitcherScreen screen) {
+					if (op.equals("next")) {
+						screen.keyPressed(new KeyEvent(InputConstants.KEY_F4, 0, 0));
+					} else if (op.equals("apply")) {
+						screen.keyReleased(new KeyEvent(InputConstants.KEY_F3, 0, 0));
+					}
 				}
 			}
 			case "quit" -> minecraft.stop(); // the host closed: Minecraft goes with it (the world saves on the way out)

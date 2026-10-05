@@ -143,6 +143,7 @@ namespace ValCraft
 		}
 
 		private bool spin;
+		private bool gmsOpen;
 		private float spinSpeed = 90f;
 
 		/// <summary>Test oracle: while BepInEx/config/valcraft.spin exists the view turns by itself (camera-sync checks).</summary>
@@ -189,16 +190,19 @@ namespace ValCraft
 				camMode = (camMode + 1) % 3;
 			if (Key(keyGameMode))
 				Send("{\"t\":\"cmd\",\"c\":\"gamemode " + (gameMode == "creative" ? "survival" : "creative") + " @a\"}");
-			// F3+F4, as in Minecraft: the next game mode (creative -> survival -> adventure -> spectator)
+			// F3+F4, as in Minecraft: its game mode switcher over the picture; F4 again picks the next, letting go of F3 applies
 			bypass = true;
-			bool f3f4 = ZInput.GetKey(KeyCode.F3, false) && ZInput.GetKeyDown(KeyCode.F4, false);
+			bool f3 = ZInput.GetKey(KeyCode.F3, false), f4 = ZInput.GetKeyDown(KeyCode.F4, false);
 			bypass = false;
-			if (f3f4)
+			if (f3 && f4)
 			{
-				string[] modes = { "creative", "survival", "adventure", "spectator" };
-				string next = modes[(System.Array.IndexOf(modes, gameMode) + 1) % modes.Length];
-				Send("{\"t\":\"cmd\",\"c\":\"gamemode " + next + " @a\"}");
-				Message("Minecraft: " + next);
+				Send(gmsOpen ? "{\"t\":\"gms\",\"op\":\"next\"}" : "{\"t\":\"gms\",\"op\":\"open\"}");
+				gmsOpen = true;
+			}
+			else if (gmsOpen && !f3)
+			{
+				Send("{\"t\":\"gms\",\"op\":\"apply\"}");
+				gmsOpen = false;
 			}
 			HideMinecraftWindow();
 			Addon.SetPoseLag(poseLag.Value);

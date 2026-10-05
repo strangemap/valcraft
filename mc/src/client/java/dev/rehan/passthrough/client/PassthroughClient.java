@@ -104,7 +104,9 @@ public class PassthroughClient implements ClientModInitializer {
 		if (Passthrough.active) {
 			// a Minecraft screen (inventory, chat, ...) takes the mouse: raise our invisible window over the host's
 			boolean open = minecraft.gui.screen() != null && !(minecraft.gui.screen() instanceof DeathScreen)
-				&& !(minecraft.gui.screen() instanceof TitleScreen);
+				&& !(minecraft.gui.screen() instanceof TitleScreen)
+				// the game mode switcher is driven from the host's window (F3 held there): it keeps the focus
+				&& !(minecraft.gui.screen() instanceof net.minecraft.client.gui.screens.debug.GameModeSwitcherScreen);
 			if (open != screenOpen) {
 				screenOpen = open;
 				Passthrough.events.accept("{\"t\":\"screen\",\"open\":" + open + "}");
