@@ -468,10 +468,7 @@ namespace ValCraft
 				}
 				case "melee":
 				{
-					// Minecraft's attack cooldown: a spam click does a fifth, a fully charged swing all of it
-					float charge = m.TryGetValue("charge", out var mc) ? Mathf.Clamp01((float)Json.D(mc)) : 1f;
-					float mcDamage = m.TryGetValue("dmg", out var md) ? (float)Json.D(md) : meleeDamage.Value / 12f;
-					Melee(m.TryGetValue("item", out var mi) ? mi as string ?? "" : "", mcDamage * (0.2f + 0.8f * charge * charge));
+					Swing(m.TryGetValue("item", out var mi) ? mi as string ?? "" : "");
 					break;
 				}
 				case "proj":

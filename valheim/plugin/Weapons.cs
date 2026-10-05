@@ -99,27 +99,112 @@ namespace ValCraft
 			return digPrefab;
 		}
 
-		/// <summary>A Minecraft swing: the creatures in front of the player, else what the crosshair is on.</summary>
-		private void Melee(string item, float mcDamage)
+		/// <summary>
+		/// Minecraft's attack damage and attacks per second for an item (vanilla values: the client doesn't apply a held
+		/// item's attribute modifiers, so they can't be read from Minecraft's player).
+		/// </summary>
+		private static (float damage, float speed) Stats(string item)
+		{
+			int t = Tier(item);
+			bool gold = item.StartsWith("golden"), wood = item.StartsWith("wooden");
+			if (item.EndsWith("_sword"))
+				return (new[] { 4f, 5f, 6f, 7f, 8f }[t], 1.6f);
+			if (item.EndsWith("_axe"))
+				return (wood || gold ? 7f : new[] { 7f, 9f, 9f, 9f, 10f }[t], gold ? 1f : new[] { 0.8f, 0.8f, 0.9f, 1f, 1f }[t]);
+			if (item.EndsWith("_pickaxe"))
+				return (new[] { 2f, 3f, 4f, 5f, 6f }[t], 1.2f);
+			if (item.EndsWith("_shovel"))
+				return (new[] { 2.5f, 3.5f, 4.5f, 5.5f, 6.5f }[t], 1f);
+			if (item.EndsWith("_hoe"))
+				return (1f, gold || wood ? 1f : new[] { 1f, 2f, 3f, 4f, 4f }[t]);
+			if (item.EndsWith("_spear"))
+				return (new[] { 2f, 3f, 4f, 5f, 6f }[t] + 1f, 1.1f);
+			if (item == "mace")
+				return (6f, 0.6f);
+			if (item == "trident")
+				return (9f, 1.1f);
+			return (1f, 4f); // a fist (or a block, a torch...)
+		}
+
+		private float lastSwing = -10f;
+		private string lastItem;
+
+		/// <summary>
+		/// A Minecraft swing, judged the way Minecraft does: the attack cooldown (a spam click does a fifth), a critical
+		/// hit when falling with a full swing (x1.5, crit sparks), and a sword's sweep on the ground (hits around the target).
+		/// </summary>
+		private void Swing(string item)
+		{
+			var player = Player.m_localPlayer;
+			var (damage, speed) = Stats(item);
+			float now = Time.time;
+			// switching items starts the cooldown over, as in Minecraft
+			float charge = item != lastItem ? 0.25f : Mathf.Clamp01((now - lastSwing) * speed);
+			lastSwing = now;
+			lastItem = item;
+			bool full = charge > 0.9f;
+			bool crit = full && !player.IsOnGround() && player.GetVelocity().y < -0.1f && !Creative.flying;
+			bool sweep = full && !crit && item.EndsWith("_sword") && player.IsOnGround() && !Sprinting();
+			float dealt = damage * (0.2f + 0.8f * charge * charge) * (crit ? 1.5f : 1f);
+			Melee(item, dealt, full, crit, sweep);
+		}
+
+		private void Effect(string what, Vector3 at)
+		{
+			string pos = ToMc(at).Trim('[', ']').Replace(",", " ");
+			Send("{\"t\":\"cmd\",\"c\":\"" + what.Replace("@", pos) + "\"}");
+		}
+
+		/// <summary>The creature in front of the player (one, as in Minecraft, plus the sweep), else what the crosshair is on.</summary>
+		private void Melee(string item, float mcDamage, bool full, bool crit, bool sweep)
 		{
 			var player = Player.m_localPlayer;
 			var cam = GameCamera.instance != null ? GameCamera.instance.transform : player.transform;
 			Vector3 origin = player.transform.position + Vector3.up;
 			Vector3 fwd = Vector3.ProjectOnPlane(cam.forward, Vector3.up).normalized;
-			int hits = 0;
+			Character target = null;
+			float best = float.MaxValue;
 			foreach (var ch in Character.GetAllCharacters())
 			{
 				if (ch == null || ch == player || ch.IsDead())
 					continue;
 				Vector3 d = ch.GetCenterPoint() - origin;
 				float reach = 3.2f + ch.GetRadius();
-				if (d.magnitude > reach || Vector3.Dot(Vector3.ProjectOnPlane(d, Vector3.up).normalized, fwd) < 0.35f)
+				float facing = Vector3.Dot(Vector3.ProjectOnPlane(d, Vector3.up).normalized, fwd);
+				if (d.magnitude > reach || facing < 0.35f)
 					continue;
-				ch.Damage(WeaponHit(item, mcDamage, ch.GetCenterPoint(), d));
-				hits++;
+				float score = d.magnitude * (2f - facing);
+				if (score < best)
+				{
+					best = score;
+					target = ch;
+				}
 			}
-			if (hits > 0)
+			if (target != null)
+			{
+				Vector3 c = target.GetCenterPoint();
+				target.Damage(WeaponHit(item, mcDamage, c, c - origin));
+				if (crit)
+				{
+					Effect("particle minecraft:crit @ 0.4 0.5 0.4 0.5 24 force", c);
+					Effect("playsound minecraft:entity.player.attack.crit player @a @ 1 1", c);
+				}
+				else
+					Effect(full ? "playsound minecraft:entity.player.attack.strong player @a @ 1 1" : "playsound minecraft:entity.player.attack.weak player @a @ 1 1", c);
+				if (sweep)
+				{
+					Effect("particle minecraft:sweep_attack @ 0 0 0 0 1 force", player.transform.position + Vector3.up * 1.1f + fwd * 1.2f);
+					Effect("playsound minecraft:entity.player.attack.sweep player @a @ 1 1", c);
+					foreach (var other in Character.GetAllCharacters())
+					{
+						if (other == null || other == player || other == target || other.IsDead())
+							continue;
+						if (Vector3.Distance(other.GetCenterPoint(), c) < 1.6f + other.GetRadius())
+							other.Damage(WeaponHit(item, mcDamage * 0.35f, other.GetCenterPoint(), other.GetCenterPoint() - origin));
+					}
+				}
 				return;
+			}
 
 			// the scenery under the crosshair, within Minecraft's reach of the player (4.5 blocks)
 			float reachFromCam = Vector3.Distance(cam.position, player.m_eye.position) + 4.5f;
