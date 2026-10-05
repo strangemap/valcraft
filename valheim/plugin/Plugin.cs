@@ -62,7 +62,7 @@ namespace ValCraft
 			keyRelevel = Config.Bind("Keys", "Relevel", new KeyboardShortcut(KeyCode.F8), "Re-level Minecraft's ground to where you stand");
 			keyHands = Config.Bind("Keys", "Hands", new KeyboardShortcut(KeyCode.F6), "Mouse/hotbar: Minecraft's hands or Valheim's weapons");
 			meleeDamage = Config.Bind("Combat", "MeleeDamage", 35f, "Valheim damage of a Minecraft sword swing");
-			damageMultiplier = Config.Bind("Combat", "DamageMultiplier", 12f, "Valheim damage per point of Minecraft attack damage (diamond sword 7 x 12 = 84)");
+			damageMultiplier = Config.Bind("Combat", "DamageMultiplier2", 6f, "Valheim damage per point of Minecraft attack damage (diamond sword 7 x 6 = 42)");
 			arrowDamage = Config.Bind("Combat", "ArrowDamage2", 70f, "Valheim damage of a Minecraft arrow");
 			explosionDamage = Config.Bind("Combat", "ExplosionDamage2", 250f, "Valheim damage at the centre of a Minecraft explosion (TNT, creepers)");
 			BindControls();

@@ -61,7 +61,7 @@ public final class HostState {
 	}
 
 	/** The latest pose if the host is still sending, else null. */
-	static Pose live() {
+	public static Pose live() {
 		Pose p = latest;
 		return p != null && System.nanoTime() - p.receivedNanos() < TIMEOUT_NANOS ? p : null;
 	}

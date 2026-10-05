@@ -9,8 +9,8 @@ namespace ValCraft
 	/// </summary>
 	public partial class Plugin
 	{
-		/// <summary>Minecraft damage to Valheim damage (config Combat/DamageMultiplier: 12 makes a diamond sword's 7 Valheim's 84).</summary>
-		private static float DamageScale => I != null && I.damageMultiplier != null ? I.damageMultiplier.Value : 12f;
+		/// <summary>Minecraft damage to Valheim damage (config Combat/DamageMultiplier: 6 makes a diamond sword's 7 Valheim's 42).</summary>
+		private static float DamageScale => I != null && I.damageMultiplier != null ? I.damageMultiplier.Value : 6f;
 
 		private static int Tier(string item)
 		{
