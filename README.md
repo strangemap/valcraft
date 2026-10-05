@@ -10,6 +10,13 @@ Minecraft × GTA V passthrough from [universal-modder](https://github.com/rehan-
 
 > Experimental, single-player (or your own server), Windows only. Built with AI (Claude Code).
 
+![Steve and his blocks in Valheim's meadows](docs/img/meadow.jpg)
+
+| | |
+|---|---|
+| ![A TNT tower in the Black Forest](docs/img/tnt.jpg) | ![Minecraft's inventory over Valheim](docs/img/inventory.jpg) |
+| A TNT tower in the Black Forest | Minecraft's inventory, opened over Valheim |
+
 ---
 
 ## English
