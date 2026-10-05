@@ -150,7 +150,7 @@ void PS_Composite(float4 pos : SV_Position, float2 uv : TEXCOORD, out float4 out
 	// Where this Valheim pixel's view ray lands in Minecraft's frame.
 	float2 muv = ouv;
 	bool inside = true;
-	const float zh = host_linear((UseValDepth ? tex2Dlod(sValDepth, float4(uv, 0, 0)).x : tex2Dlod(ReShade::DepthBuffer, float4(uv, 0, 0)).x));
+	const float zh = host_linear((UseValDepth ? tex2Dlod(sValDepth, float4(uv.x, 1.0 - uv.y, 0, 0)).x : tex2Dlod(ReShade::DepthBuffer, float4(uv, 0, 0)).x));
 	// how far behind Valheim's surface Minecraft may still show: more where that surface is seen at a grazing angle
 	const float allow = min(DepthBias + SlopeBias * abs(ddy(zh)), max(MaxBias, DepthBias));
 	float zm = 1e9;

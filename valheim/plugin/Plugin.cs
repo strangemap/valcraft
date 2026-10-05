@@ -247,7 +247,8 @@ namespace ValCraft
 			Vector3 c = t.position;
 			double mx = -c.x, my = c.y + yOffset, mz = c.z;
 			Addon.SetPlanes(cam.nearClipPlane, cam.farClipPlane);
-			UnityDepth();
+			occluders.Frame(cam, player.transform, blockRoot != null ? blockRoot.transform : null);
+			OccluderDepth();
 			Addon.SetPose(yaw, pitch, roll, cam.fieldOfView, mx, my, mz);
 			// where Steve looks: the camera's way, or back at the camera when it is in front of him
 			float headYaw = mode == 2 ? Wrap(yaw + 180f) : yaw, headPitch = mode == 2 ? -pitch : pitch;
@@ -263,6 +264,21 @@ namespace ValCraft
 		private static readonly int depthTexId = Shader.PropertyToID("_CameraDepthTexture");
 		private Texture depthTex;
 		private IntPtr depthPtr;
+
+		private readonly Occluders occluders = new Occluders();
+		private RenderTexture occluderTex;
+
+		/// <summary>The depth Minecraft is tested against: Valheim's solid things only (see Occluders).</summary>
+		private void OccluderDepth()
+		{
+			var t = occluders.Depth;
+			if (t == null || t == occluderTex)
+				return;
+			occluderTex = t;
+			depthPtr = t.GetNativeTexturePtr();
+			Addon.SetUnityDepth(depthPtr);
+			Log($"occluder depth {t.width}x{t.height}");
+		}
 
 		/// <summary>Unity's camera depth for the add-on to test Minecraft against (the whole opaque scene of this frame).</summary>
 		private void UnityDepth()
