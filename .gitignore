@@ -1,0 +1,11 @@
+mc/build/
+mc/.gradle/
+mc/run/
+valheim/plugin/bin/
+valheim/plugin/obj/
+valheim/addon/build/
+gta/third_party/
+prism/
+backup/
+shots/
+*.log
