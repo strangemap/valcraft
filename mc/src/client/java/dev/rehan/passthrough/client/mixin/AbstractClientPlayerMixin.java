@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** While a host is attached the player is classic Steve (the wide-armed default skin), whatever the account's skin. */
+/** With -Dpassthrough.steveSkin=true the player is classic Steve while a host is attached; otherwise the account's own skin. */
 @Mixin(AbstractClientPlayer.class)
 abstract class AbstractClientPlayerMixin {
 	/** DefaultPlayerSkin picks floorMod(uuid.hashCode(), 18); index 15 is entity/player/wide/steve. */
@@ -18,7 +18,7 @@ abstract class AbstractClientPlayerMixin {
 
 	@Inject(method = "getSkin", at = @At("HEAD"), cancellable = true)
 	private void passthrough$steve(final CallbackInfoReturnable<PlayerSkin> cir) {
-		if (Passthrough.active && !Boolean.getBoolean("passthrough.ownSkin")) {
+		if (Passthrough.active && Boolean.getBoolean("passthrough.steveSkin")) {
 			cir.setReturnValue(DefaultPlayerSkin.get(CLASSIC_STEVE));
 		}
 	}

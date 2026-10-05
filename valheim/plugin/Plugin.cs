@@ -209,6 +209,7 @@ namespace ValCraft
 				HidePlayer(mcHands);
 			}
 
+			UiForward.Tick(this);
 			ControlsInput(player);
 			Input(player);
 			if (haveOffset)
@@ -452,8 +453,7 @@ namespace ValCraft
 					break;
 				case "screen":
 					mcScreen = m.TryGetValue("open", out var so) && so is bool sb && sb;
-					if (mcScreen)
-						FocusMinecraft();
+
 					break;
 				case "mobs":
 					mobBridge.OnMobs(Json.L(m["m"]), ToUnity);
@@ -465,7 +465,7 @@ namespace ValCraft
 					break;
 				}
 				case "melee":
-					Melee();
+					Melee(m.TryGetValue("item", out var mi) ? mi as string ?? "" : "", m.TryGetValue("dmg", out var md) ? (float)Json.D(md) : meleeDamage.Value / 5f);
 					break;
 				case "proj":
 					Projectiles(Json.L(m["p"]));
@@ -591,43 +591,6 @@ namespace ValCraft
 			if (Player.m_localPlayer != null)
 				hit.SetAttacker(Player.m_localPlayer);
 			return hit;
-		}
-
-		/// <summary>A Minecraft sword swing hits the creatures in front of the player.</summary>
-		private void Melee()
-		{
-			var player = Player.m_localPlayer;
-			var cam = GameCamera.instance != null ? GameCamera.instance.transform : player.transform;
-			Vector3 origin = player.transform.position + Vector3.up;
-			Vector3 fwd = Vector3.ProjectOnPlane(cam.forward, Vector3.up).normalized;
-			int hits = 0;
-			foreach (var ch in Character.GetAllCharacters())
-			{
-				if (ch == null || ch == player || ch.IsDead())
-					continue;
-				Vector3 d = ch.GetCenterPoint() - origin;
-				float reach = 3.2f + ch.GetRadius();
-				if (d.magnitude > reach || Vector3.Dot(Vector3.ProjectOnPlane(d, Vector3.up).normalized, fwd) < 0.35f)
-					continue;
-				ch.Damage(Hit(ch.GetCenterPoint(), d, meleeDamage.Value, 0f, 0f, 40f));
-				hits++;
-			}
-			if (hits == 0)
-			{
-				// a swing at the scenery: trees, rocks and buildings take it as a hit too
-				if (Physics.Raycast(cam.position, cam.forward, out var rh, 6f, groundMask, QueryTriggerInteraction.Ignore))
-				{
-					var dest = rh.collider.GetComponentInParent<IDestructible>();
-					if (dest != null)
-					{
-						var hit = Hit(rh.point, cam.forward, meleeDamage.Value, meleeDamage.Value, 0f, 0f);
-						hit.m_toolTier = 2;
-						hit.m_damage.m_chop = meleeDamage.Value;
-						hit.m_damage.m_pickaxe = meleeDamage.Value;
-						dest.Damage(hit);
-					}
-				}
-			}
 		}
 
 		/// <summary>Steve's arrows and fireworks in flight: traced through Valheim's world between reports.</summary>
@@ -791,7 +754,15 @@ namespace ValCraft
 	[HarmonyPatch(typeof(ZInput), nameof(ZInput.GetButtonDown))]
 	internal static class ButtonDownPatch
 	{
-		private static bool Prefix(string name, ref bool __result) => !Plugin.Remap(name, ref __result, true);
+		private static bool Prefix(string name, ref bool __result)
+		{
+			if (Plugin.mcScreen && !Plugin.bypass)
+			{
+				__result = false;
+				return false;
+			}
+			return !Plugin.Remap(name, ref __result, true);
+		}
 	}
 
 	/// <summary>The wheel is Minecraft's hotbar while Minecraft runs (Valheim would zoom the camera).</summary>

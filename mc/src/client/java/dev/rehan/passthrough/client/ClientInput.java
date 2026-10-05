@@ -41,10 +41,12 @@ final class ClientInput {
 					case "swap" -> minecraft.options.keySwapOffhand;
 					default -> null;
 				};
-				if (k.equals("attack") && down && player != null
-					&& BuiltInRegistries.ITEM.getKey(player.getMainHandItem().getItem()).getPath().endsWith("_sword")) {
-					// a sword swing: the host hits what's in front of Steve in its own world
-					Passthrough.events.accept("{\"t\":\"melee\"}");
+				if (k.equals("attack") && down && player != null) {
+					// a swing: the host hits what's in front of Steve in its own world, by what he holds (its name and
+					// Minecraft's attack damage with it)
+					String item = BuiltInRegistries.ITEM.getKey(player.getMainHandItem().getItem()).getPath();
+					double damage = player.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE);
+					Passthrough.events.accept(String.format(java.util.Locale.ROOT, "{\"t\":\"melee\",\"item\":\"%s\",\"dmg\":%.2f}", item, damage));
 				}
 
 				if (key != null) {
@@ -70,6 +72,7 @@ final class ClientInput {
 					}
 				}
 			}
+			case "ui" -> HostUi.handle(minecraft, m);
 			case "quit" -> minecraft.stop(); // the host closed: Minecraft goes with it (the world saves on the way out)
 			case "slot" -> {
 				if (player != null) {

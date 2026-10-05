@@ -117,3 +117,40 @@ namespace ValCraft
 		}
 	}
 }
+
+namespace ValCraft
+{
+	/// <summary>
+	/// Minecraft's sneak: while Shift is held on the ground the Viking doesn't walk off an edge (a Minecraft block's or
+	/// Valheim's), each direction tested on its own so he slides along the edge.
+	/// </summary>
+	[HarmonyLib.HarmonyPatch(typeof(Character), "UpdateMotion")]
+	internal static class SneakEdgePatch
+	{
+		private const float Look = 0.25f, Drop = 0.6f;
+		private static readonly System.Reflection.FieldInfo bodyField = HarmonyLib.AccessTools.Field(typeof(Character), "m_body");
+		private static int mask;
+
+		private static bool Ground(Vector3 at)
+		{
+			return Physics.Raycast(at + Vector3.up * 0.3f, Vector3.down, 0.3f + Drop, mask, QueryTriggerInteraction.Ignore);
+		}
+
+		private static void Postfix(Character __instance)
+		{
+			if (__instance != Player.m_localPlayer || Plugin.I == null || !Plugin.I.On || Creative.flying || !__instance.IsOnGround() || !Plugin.Sneaking())
+				return;
+			if (mask == 0)
+				mask = LayerMask.GetMask("Default", "static_solid", "Default_small", "piece", "terrain", "vehicle");
+			var body = bodyField?.GetValue(__instance) as Rigidbody;
+			if (body == null)
+				return;
+			Vector3 v = body.linearVelocity, p = body.position;
+			if (Mathf.Abs(v.x) > 0.01f && !Ground(p + new Vector3(Mathf.Sign(v.x) * Look, 0f, 0f)))
+				v.x = 0f;
+			if (Mathf.Abs(v.z) > 0.01f && !Ground(p + new Vector3(0f, 0f, Mathf.Sign(v.z) * Look)))
+				v.z = 0f;
+			body.linearVelocity = v;
+		}
+	}
+}

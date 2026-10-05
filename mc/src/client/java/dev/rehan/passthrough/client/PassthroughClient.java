@@ -110,11 +110,7 @@ public class PassthroughClient implements ClientModInitializer {
 			if (open != screenOpen) {
 				screenOpen = open;
 				Passthrough.events.accept("{\"t\":\"screen\",\"open\":" + open + "}");
-				if (open) {
-					HostWindow.raiseMinecraft(minecraft);
-				} else {
-					HostWindow.focusHost();
-				}
+				// (no focus change: the host keeps the keyboard and mouse and forwards them, see HostUi)
 			}
 
 			// the host shows Minecraft's game mode and health (survival: Minecraft's hearts are the player's)

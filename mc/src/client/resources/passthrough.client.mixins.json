@@ -16,7 +16,9 @@
 		"LocalPlayerMixin",
 		"ToastManagerMixin",
 		"LevelRendererMixin",
-		"MultiPlayerGameModeMixin"
+		"MultiPlayerGameModeMixin",
+		"ScreenMixin",
+		"MouseHandlerAccessor"
 	],
 	"injectors": {
 		"defaultRequire": 1

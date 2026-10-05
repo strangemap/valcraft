@@ -224,7 +224,7 @@ namespace ValCraft
 				ClientToScreen(hwnd, ref at);
 				int w = rc.R - rc.L, h = rc.B - rc.T;
 				// the picture's own size (a fullscreen mode can differ from the window's): Minecraft must match its shape
-				if (!mcScreen && Screen.width > 0 && Screen.height > 0)
+				if (Screen.width > 0 && Screen.height > 0)
 				{
 					w = Screen.width;
 					h = Screen.height;
@@ -232,7 +232,7 @@ namespace ValCraft
 				// Minecraft renders at most ~MaxPixels (the effect scales its picture up): at 1440p and above a full-size
 				// frame is ~45 MB a frame to read back and upload, and both games stutter. Its screens (inventory, chat)
 				// need the window over the whole picture for the mouse, so it grows only while one is open.
-				if (!mcScreen && (long)w * h > maxPixels.Value)
+				if ((long)w * h > maxPixels.Value)
 				{
 					double k = Math.Sqrt(maxPixels.Value / ((double)w * h));
 					w = (int)(w * k + 0.5);

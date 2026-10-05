@@ -125,8 +125,10 @@ public final class PlayerSync {
 
 		player.setDeltaMovement(Vec3.ZERO);
 		Abilities abilities = player.getAbilities();
-		if (abilities.mayfly && !abilities.flying) {
-			abilities.flying = true;
+		// flying keeps him from falling between the host's updates; a flying player can't crouch, so not while sneaking
+		boolean fly = abilities.mayfly && !p.sneak();
+		if (abilities.flying != fly) {
+			abilities.flying = fly;
 			player.onUpdateAbilities();
 		}
 	}
