@@ -220,6 +220,13 @@ void PS_Composite(float4 pos : SV_Position, float2 uv : TEXCOORD, out float4 out
 			world = wu;
 			zm = zu;
 		}
+		else if (world.a <= 0.0 && wu.a > 0.0)
+		{
+			// a hole the re-projection opened (behind a nearer block that moved): Minecraft's pixel as rendered there,
+			// a fraction of a frame old, rather than Valheim showing through a gap in the blocks
+			world = wu;
+			zm = zu;
+		}
 	}
 	if (!Reproject)
 		zm = mc_linear(tex2D(sDepth, muv).r);
