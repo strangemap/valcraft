@@ -156,6 +156,8 @@ public class PassthroughClient implements ClientModInitializer {
 		options.enableVsync().set(false);
 		// the host shows ~60-120 fps: rendering faster only competes with it for the GPU
 		options.framerateLimit().set(120);
+		// no Minecraft music over the host's
+		options.getSoundSourceOptionInstance(net.minecraft.sounds.SoundSource.MUSIC).set(0.0);
 		options.save();
 	}
 

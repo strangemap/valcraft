@@ -49,6 +49,45 @@ namespace ValCraft
 		[DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr h);
 		[DllImport("user32.dll")] private static extern bool BringWindowToTop(IntPtr h);
 
+		[DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] private static extern IntPtr GetWindowLongPtr(IntPtr h, int i);
+		[DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] private static extern IntPtr SetWindowLongPtr(IntPtr h, int i, IntPtr v);
+		private float nextWindowCheck;
+
+		/// <summary>Minecraft's window never shows in Alt-Tab or the taskbar (a tool window): it only exists for its screens.</summary>
+		private void HideMinecraftWindow()
+		{
+			if (Time.unscaledTime < nextWindowCheck)
+				return;
+			nextWindowCheck = Time.unscaledTime + 2f;
+			IntPtr mc = FindMinecraft();
+			if (mc == IntPtr.Zero)
+				return;
+			const int GWL_EXSTYLE = -20;
+			const long WS_EX_TOOLWINDOW = 0x80, WS_EX_APPWINDOW = 0x40000;
+			long style = GetWindowLongPtr(mc, GWL_EXSTYLE).ToInt64();
+			long want = (style | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW;
+			if (want != style)
+				SetWindowLongPtr(mc, GWL_EXSTYLE, new IntPtr(want));
+		}
+
+		private static IntPtr FindMinecraft()
+		{
+			IntPtr found = IntPtr.Zero;
+			var sb = new System.Text.StringBuilder(256);
+			EnumWindows((h, l) =>
+			{
+				sb.Clear();
+				GetWindowText(h, sb, sb.Capacity);
+				if (sb.ToString().StartsWith("Minecraft"))
+				{
+					found = h;
+					return false;
+				}
+				return true;
+			}, IntPtr.Zero);
+			return found;
+		}
+
 		/// <summary>A Minecraft screen opened: hand it the focus (Valheim is in front, so Windows lets it give the focus away).</summary>
 		internal static void FocusMinecraft()
 		{
@@ -150,6 +189,18 @@ namespace ValCraft
 				camMode = (camMode + 1) % 3;
 			if (Key(keyGameMode))
 				Send("{\"t\":\"cmd\",\"c\":\"gamemode " + (gameMode == "creative" ? "survival" : "creative") + " @a\"}");
+			// F3+F4, as in Minecraft: the next game mode (creative -> survival -> adventure -> spectator)
+			bypass = true;
+			bool f3f4 = ZInput.GetKey(KeyCode.F3, false) && ZInput.GetKeyDown(KeyCode.F4, false);
+			bypass = false;
+			if (f3f4)
+			{
+				string[] modes = { "creative", "survival", "adventure", "spectator" };
+				string next = modes[(System.Array.IndexOf(modes, gameMode) + 1) % modes.Length];
+				Send("{\"t\":\"cmd\",\"c\":\"gamemode " + next + " @a\"}");
+				Message("Minecraft: " + next);
+			}
+			HideMinecraftWindow();
 			Addon.SetPoseLag(poseLag.Value);
 
 			// creative: nothing hurts; survival: Minecraft's hearts take the hits (see DamagePatch)

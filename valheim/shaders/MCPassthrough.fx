@@ -58,7 +58,7 @@ uniform float3 Shake = float3(0.0, 0.0, 0.0);
 uniform float PortalWarp = 0.0;
 uniform float Timer < source = "timer"; >;
 uniform int DebugView < ui_type = "combo"; ui_items = "Composite\0Valheim depth (1 m bands)\0Minecraft depth (1 m bands)\0Depth difference\0"; > = 0;
-uniform bool Reproject < ui_label = "Re-project to Valheim's camera"; ui_tooltip = "Rotate Minecraft's (slightly older) frame onto Valheim's current camera."; > = true;
+uniform bool Reproject < ui_label = "Re-project to Valheim's camera"; ui_tooltip = "Rotate Minecraft's (slightly older) frame onto Valheim's current camera."; > = false;
 uniform float PosePrediction < ui_type = "drag"; ui_min = -2.0; ui_max = 3.0; ui_step = 0.05; ui_label = "Pose prediction (frames)";
 	ui_tooltip = "Extrapolate Valheim's camera rotation by this many frames before re-projecting."; > = 0.0;
 

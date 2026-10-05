@@ -415,17 +415,8 @@ namespace compositor
 		ctx->OMGetRenderTargets(1, &rtv, &dsv);
 		// The depth tested against: the depth buffer bound right now (this frame's camera depth), else the texture the
 		// plugin handed over. A view on it is made once per resource (Unity reuses a few pooled depth targets).
+		// (not the depth buffer bound at this point: after the image effects that is another, cleared one)
 		void *current = g_unityDepth.load();
-		if (dsv != nullptr)
-		{
-			ID3D11Resource *dres = nullptr;
-			dsv->GetResource(&dres);
-			if (dres)
-			{
-				current = dres;
-				dres->Release(); // still alive: bound by Unity
-			}
-		}
 		if (void *tex = current; tex != g_unityDepthFor)
 		{
 			g_unityDepthFor = tex;

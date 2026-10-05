@@ -178,16 +178,28 @@ namespace ValCraft
 
 			if (!haveOffset || relevel)
 			{
-				relevel = false;
-				if (Ground(player.transform.position.x, player.transform.position.z, player.transform.position.y, out float g))
+				bool forced = relevel;
+				if (!forced && Offsets.TryGet(out float saved))
 				{
-					yOffset = Mathf.Round(g) - g;
+					// this world's offset from before: blocks built earlier stay where they were (and stay solid)
+					yOffset = saved;
 					haveOffset = true;
 					sampled.Clear();
 					ClearBlocks();
 					Send("{\"t\":\"clear\"}");
-					Send("{\"t\":\"blocksync\",\"r\":64}");
+					syncAt = new Vector3(float.NaN, 0f, 0f);
 				}
+				else if (Ground(player.transform.position.x, player.transform.position.z, player.transform.position.y, out float g))
+				{
+					yOffset = Mathf.Round(g) - g;
+					Offsets.Save(yOffset);
+					haveOffset = true;
+					sampled.Clear();
+					ClearBlocks();
+					Send("{\"t\":\"clear\"}");
+					syncAt = new Vector3(float.NaN, 0f, 0f);
+				}
+				relevel = false;
 			}
 
 			if (Time.unscaledTime >= nextHide)
@@ -201,6 +213,7 @@ namespace ValCraft
 			Input(player);
 			if (haveOffset)
 			{
+				BlockSync(player);
 				SampleGround(player.transform.position);
 				mobBridge.Tick(this, yOffset);
 			}
@@ -478,6 +491,30 @@ namespace ValCraft
 				blocks[key] = go;
 				ColumnChanged(x, z, 1, go.transform.position);
 			}
+		}
+
+		private Vector3 syncAt = new Vector3(float.NaN, 0f, 0f);
+		private float syncAfter;
+
+		/// <summary>
+		/// Minecraft's blocks around the player become colliders here: asked for once Minecraft's player stands where
+		/// Valheim's does (a second after the link starts), and again every 24 m walked.
+		/// </summary>
+		private void BlockSync(Player player)
+		{
+			Vector3 p = player.transform.position;
+			if (float.IsNaN(syncAt.x))
+			{
+				if (syncAfter == 0f)
+					syncAfter = Time.time + 1.5f;
+				if (Time.time < syncAfter)
+					return;
+			}
+			else if ((p - syncAt).sqrMagnitude < 24f * 24f)
+				return;
+			syncAfter = 0f;
+			syncAt = p;
+			Send("{\"t\":\"blocksync\",\"r\":48}");
 		}
 
 		/// <summary>Columns (Minecraft x, z) with a Minecraft block in them, for the grass patch.</summary>
