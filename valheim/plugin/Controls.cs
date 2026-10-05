@@ -16,7 +16,13 @@ namespace ValCraft
 	{
 		/// <summary>0: first person, 1: behind (Valheim's own camera), 2: in front, looking back.</summary>
 		private int camMode;
-		private ConfigEntry<KeyboardShortcut> keyCamera, keyGameMode;
+		private ConfigEntry<KeyboardShortcut> keyCamera, keyGameMode, keyMode;
+		private ConfigEntry<bool> autoStart;
+		private ConfigEntry<string> launchCommand, launchArgs;
+		private static readonly System.Reflection.FieldInfo playerPosField = AccessTools.Field(typeof(GameCamera), "m_playerPos");
+		private static readonly System.Reflection.MethodInfo setCrouch = AccessTools.Method(typeof(Player), "SetCrouch");
+		private float eyeHeight = float.NaN;
+		private bool crouchSet;
 		private ConfigEntry<int> poseLag;
 		private float bodyYaw = float.NaN;
 		/// <summary>Minecraft's game mode ("creative", "survival", ...), from its "mcstate".</summary>
@@ -69,14 +75,61 @@ namespace ValCraft
 		{
 			keyCamera = Config.Bind("Keys", "Camera", new KeyboardShortcut(KeyCode.F5), "First person / behind / in front");
 			keyGameMode = Config.Bind("Keys", "GameMode", new KeyboardShortcut(KeyCode.F9), "Minecraft creative <-> survival");
+			keyMode = Config.Bind("Keys", "Mode", new KeyboardShortcut(KeyCode.R), "Minecraft mode (mouse, 1-9, wheel = Minecraft) <-> Valheim mode (Valheim's weapons and hotbar)");
+			autoStart = Config.Bind("Minecraft", "AutoStart", true, "Start Minecraft (hidden) with Valheim when it isn't running");
+			launchCommand = Config.Bind("Minecraft", "Launcher", @"D:\Dev\ValCraft\prism\prismlauncher.exe", "Launcher that starts the Minecraft half");
+			launchArgs = Config.Bind("Minecraft", "LauncherArgs", "--launch ValCraft", "Its arguments");
 			poseLag = Config.Bind("Render", "PoseLag", 1, "Frames between Valheim's camera update and its picture (Unity's render thread runs a frame behind)");
 		}
 
 		/// <summary>The camera mode in use: Valheim's weapons are drawn on Valheim's own body, which has no first person.</summary>
 		private int CamMode => mcHands ? camMode : (camMode == 0 ? 1 : camMode);
 
+		/// <summary>
+		/// Where the player is drawn: Valheim's camera follows a smoothed copy of the body (which moves in 50 Hz physics
+		/// steps); Steve and the first-person eyes use the same one, or he would shake against the camera.
+		/// </summary>
+		internal Vector3 SmoothPos(Player player)
+		{
+			if (GameCamera.instance != null && playerPosField != null)
+			{
+				var v = (Vector3)playerPosField.GetValue(GameCamera.instance);
+				if ((v - player.transform.position).sqrMagnitude < 25f)
+					return v;
+			}
+			return player.transform.position;
+		}
+
+		private bool spin;
+
+		/// <summary>Test oracle: while BepInEx/config/valcraft.spin exists the view turns by itself (camera-sync checks).</summary>
+		private void DebugSpin(Player player)
+		{
+			if (Time.frameCount % 60 == 0)
+			{
+				string f = System.IO.Path.Combine(BepInEx.Paths.ConfigPath, "valcraft.spin");
+				spin = System.IO.File.Exists(f);
+				if (spin && int.TryParse(System.IO.File.ReadAllText(f).Trim(), out int cm))
+					camMode = cm;
+			}
+			if (!spin)
+				return;
+			Vector3 d = player.GetLookDir();
+			player.SetLookDir(Quaternion.Euler(0f, 90f * Time.deltaTime, 0f) * d);
+		}
+
 		private void ControlsUpdate(Player player)
 		{
+			DebugSpin(player);
+			if (Key(keyMode))
+				SetHands(!mcHands);
+			// Minecraft's sneak: crouched while Shift is held (Valheim toggles on each press)
+			bool sneak = Sneaking() && !InGui() && !mcScreen;
+			if (sneak != crouchSet || player.IsCrouching() != sneak)
+			{
+				crouchSet = sneak;
+				setCrouch?.Invoke(player, new object[] { sneak });
+			}
 			if (Key(keyCamera))
 				camMode = (camMode + 1) % 3;
 			if (Key(keyGameMode))
@@ -134,7 +187,10 @@ namespace ValCraft
 			Transform t = cam.transform;
 			if (mode == 0)
 			{
-				t.position = player.m_eye.position;
+				// the eyes, steady: smoothed body + eye height (the head bone bobs with the animation)
+				float h = player.m_eye.position.y - player.transform.position.y;
+				eyeHeight = float.IsNaN(eyeHeight) ? h : Mathf.Lerp(eyeHeight, h, 1f - Mathf.Exp(-10f * Time.deltaTime));
+				t.position = SmoothPos(player) + Vector3.up * eyeHeight;
 				cam.nearClipPlane = 0.05f;
 			}
 			else if (mode == 2)
@@ -182,28 +238,14 @@ namespace ValCraft
 			bypass = true;
 			try
 			{
-				// Valheim's hotbar (1-8) takes out Valheim's items: Valheim's hands. The wheel picks Minecraft's hotbar:
-				// Minecraft's hands. Alt + 1-9 picks a Minecraft slot directly.
-				bool alt = ZInput.GetKey(KeyCode.LeftAlt, false);
-				for (int i = 1; i <= 9; i++)
+				// Minecraft mode: 1-9 and the wheel are Minecraft's hotbar; Valheim mode: Valheim's own (R switches)
+				if (mcHands)
 				{
-					bool down = i <= 8 ? ZInput.GetButtonDown("Hotbar" + i) : ZInput.GetKeyDown(KeyCode.Alpha9, false);
-					if (!down)
-						continue;
-					if (alt || i == 9)
-					{
-						SetHands(true);
-						Send($"{{\"t\":\"slot\",\"n\":{i - 1}}}");
-					}
-					else
-						SetHands(false);
-				}
-				float wheel = ZInput.GetMouseScrollWheel();
-				if (Mathf.Abs(wheel) > 0.01f)
-				{
-					if (!mcHands)
-						SetHands(true);
-					else
+					for (int i = 1; i <= 9; i++)
+						if (ZInput.GetKeyDown(KeyCode.Alpha0 + i, false))
+							Send($"{{\"t\":\"slot\",\"n\":{i - 1}}}");
+					float wheel = ZInput.GetMouseScrollWheel();
+					if (Mathf.Abs(wheel) > 0.01f)
 						Send(wheel > 0f ? "{\"t\":\"scroll\",\"d\":1}" : "{\"t\":\"scroll\",\"d\":-1}");
 				}
 
@@ -250,8 +292,8 @@ namespace ValCraft
 					result = down ? ZInput.GetKeyDown(KeyCode.LeftControl, false) : ZInput.GetKey(KeyCode.LeftControl, false);
 					return true;
 				case "Crouch":
-					// Minecraft: Shift sneaks
-					result = down ? ZInput.GetKeyDown(KeyCode.LeftShift, false) : ZInput.GetKey(KeyCode.LeftShift, false);
+					// Minecraft: Shift held sneaks (set directly in ControlsUpdate); Valheim's toggle never fires
+					result = false;
 					return true;
 				case "Use":
 					// E with nothing of Valheim's to use opens Minecraft's inventory instead (ControlsInput)
@@ -262,6 +304,8 @@ namespace ValCraft
 						return true;
 					}
 					return false;
+				case "Hotbar1": case "Hotbar2": case "Hotbar3": case "Hotbar4":
+				case "Hotbar5": case "Hotbar6": case "Hotbar7": case "Hotbar8":
 				case "Attack":
 				case "SecondaryAttack":
 				case "Block":

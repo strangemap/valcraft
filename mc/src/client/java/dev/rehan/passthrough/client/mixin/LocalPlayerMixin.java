@@ -14,4 +14,10 @@ abstract class LocalPlayerMixin {
 	private void passthrough$followHost(final CallbackInfo ci) {
 		PlayerSync.tick((LocalPlayer) (Object) this);
 	}
+
+	/** Minecraft's own tick turns the body (towards the head, the walk): the host's angles win, or he flickers between both. */
+	@Inject(method = "tick", at = @At("TAIL"))
+	private void passthrough$keepHostRotation(final CallbackInfo ci) {
+		PlayerSync.afterTick((LocalPlayer) (Object) this);
+	}
 }

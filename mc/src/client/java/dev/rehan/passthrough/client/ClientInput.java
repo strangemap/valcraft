@@ -53,6 +53,7 @@ final class ClientInput {
 					key.setDown(down);
 				}
 			}
+			case "quit" -> minecraft.stop(); // the host closed: Minecraft goes with it (the world saves on the way out)
 			case "slot" -> {
 				if (player != null) {
 					player.getInventory().setSelectedSlot(Math.clamp(m.get("n").getAsInt(), 0, Inventory.getSelectionSize() - 1));

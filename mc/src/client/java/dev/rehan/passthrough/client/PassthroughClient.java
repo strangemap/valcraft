@@ -126,6 +126,11 @@ public class PassthroughClient implements ClientModInitializer {
 
 		if (!configured) {
 			configured = true;
+			if (Boolean.getBoolean("passthrough.startHidden")) {
+				// started by the host: never seen (the host's "view" puts the window over its picture, see-through)
+				org.lwjgl.sdl.SDLVideo.SDL_SetWindowOpacity(minecraft.getWindow().handle(), 0.01F);
+				org.lwjgl.sdl.SDLVideo.SDL_SetWindowBordered(minecraft.getWindow().handle(), false);
+			}
 			configure(minecraft.options);
 		}
 

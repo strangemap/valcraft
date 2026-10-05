@@ -17,11 +17,14 @@ namespace ValCraft
 			if (searched || ZNetScene.instance == null)
 				return dig;
 			searched = true;
-			// the strongest lowering op that isn't a level/flatten tool
-			var best = ZNetScene.instance.m_prefabs
+			var ops = ZNetScene.instance.m_prefabs
 				.Select(p => (p, op: p != null ? p.GetComponent<TerrainOp>() : null))
-				.Where(x => x.op != null && x.op.m_settings.m_raise && x.op.m_settings.m_raiseDelta < 0f && !x.op.m_settings.m_level)
-				.OrderBy(x => x.op.m_settings.m_raiseDelta * x.op.m_settings.m_raiseRadius)
+				.Where(x => x.op != null).ToList();
+			Plugin.Log("terrain ops: " + string.Join(", ", ops.Select(x => $"{x.p.name}(raise {x.op.m_settings.m_raise} {x.op.m_settings.m_raiseDelta:F2} r{x.op.m_settings.m_raiseRadius:F1}, level {x.op.m_settings.m_level} {x.op.m_settings.m_levelOffset:F2})")));
+			// a dig: lowers the ground (the pickaxe's), the deepest one
+			var best = ops
+				.Where(x => (x.op.m_settings.m_raise && x.op.m_settings.m_raiseDelta < 0f) || (x.op.m_settings.m_level && x.op.m_settings.m_levelOffset < 0f))
+				.OrderBy(x => Mathf.Min(x.op.m_settings.m_raiseDelta, x.op.m_settings.m_levelOffset))
 				.FirstOrDefault();
 			dig = best.p;
 			Plugin.Log(dig != null ? "crater op: " + dig.name : "no terrain dig op found");
@@ -34,7 +37,7 @@ namespace ValCraft
 			if (prefab == null)
 				return;
 			var op = prefab.GetComponent<TerrainOp>().m_settings;
-			float r = Mathf.Max(op.m_raiseRadius, 0.5f);
+			float r = Mathf.Max(op.m_raise ? op.m_raiseRadius : op.m_levelRadius, 0.5f);
 			int rings = Mathf.Clamp(Mathf.CeilToInt(radius / r), 1, 3);
 			for (int i = -rings; i <= rings; i++)
 				for (int j = -rings; j <= rings; j++)

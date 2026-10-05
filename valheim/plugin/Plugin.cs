@@ -66,8 +66,50 @@ namespace ValCraft
 			BindControls();
 			link = new Link("ws://127.0.0.1:" + Config.Bind("Link", "Port", 25599, "Minecraft passthrough port").Value + "/");
 			link.Start();
+			StartMinecraft();
 			new Harmony("valcraft.passthrough").PatchAll();
 			Log("ValCraft loaded");
+		}
+
+		private void OnApplicationQuit()
+		{
+			// Minecraft was started for Valheim: it closes with it
+			if (link.Connected && autoStart.Value)
+			{
+				link.Send("{\"t\":\"quit\"}");
+				System.Threading.Thread.Sleep(300);
+			}
+		}
+
+		/// <summary>Minecraft's half starts by itself (hidden) unless something already listens on the link's port.</summary>
+		private void StartMinecraft()
+		{
+			if (!autoStart.Value)
+				return;
+			try
+			{
+				using (var c = new System.Net.Sockets.TcpClient())
+				{
+					if (c.ConnectAsync("127.0.0.1", 25599).Wait(500) && c.Connected)
+						return;
+				}
+				if (!System.IO.File.Exists(launchCommand.Value))
+				{
+					Logger.LogWarning("Minecraft launcher not found: " + launchCommand.Value);
+					return;
+				}
+				System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(launchCommand.Value, launchArgs.Value)
+				{
+					UseShellExecute = false,
+					WindowStyle = System.Diagnostics.ProcessWindowStyle.Minimized,
+					WorkingDirectory = System.IO.Path.GetDirectoryName(launchCommand.Value)
+				});
+				Log("starting Minecraft: " + launchCommand.Value + " " + launchArgs.Value);
+			}
+			catch (Exception e)
+			{
+				Logger.LogWarning("couldn't start Minecraft: " + e.Message);
+			}
 		}
 
 		private void OnDestroy()
@@ -195,7 +237,7 @@ namespace ValCraft
 			Addon.SetPose(yaw, pitch, roll, cam.fieldOfView, mx, my, mz);
 			// where Steve looks: the camera's way, or back at the camera when it is in front of him
 			float headYaw = mode == 2 ? Wrap(yaw + 180f) : yaw, headPitch = mode == 2 ? -pitch : pitch;
-			Vector3 p = player.transform.position;
+			Vector3 p = SmoothPos(player);
 			float body = BodyYaw(player, headYaw);
 			link.SendCam(string.Format(CultureInfo.InvariantCulture,
 				"{{\"t\":\"cam\",\"f\":{0},\"p\":[{1:F4},{2:F4},{3:F4}],\"r\":[{4:F3},{5:F3},{6:F3}],\"fov\":{7:F3},\"fp\":{8},\"pl\":[{9:F4},{10:F4},{11:F4}],\"h\":{12:F3},\"look\":[{13:F3},{14:F3}],\"sn\":{15},\"sp\":{16},\"hide\":{17} }}",
@@ -419,7 +461,15 @@ namespace ValCraft
 
 		internal bool HasBlockColumn(Vector3 unity)
 		{
-			return blockColumns.Count > 0 && blockColumns.ContainsKey(Column(Mathf.FloorToInt(-unity.x), Mathf.FloorToInt(unity.z)));
+			if (blockColumns.Count == 0)
+				return false;
+			// the column and its neighbours: bushes and grass are wider than their root point
+			int x = Mathf.FloorToInt(-unity.x), z = Mathf.FloorToInt(unity.z);
+			for (int dx = -1; dx <= 1; dx++)
+				for (int dz = -1; dz <= 1; dz++)
+					if (blockColumns.ContainsKey(Column(x + dx, z + dz)))
+						return true;
+			return false;
 		}
 
 		private void ColumnChanged(int x, int z, int delta, Vector3 at)
@@ -429,7 +479,7 @@ namespace ValCraft
 			n += delta;
 			if (n <= 0) blockColumns.Remove(k); else blockColumns[k] = n;
 			if (ClutterSystem.instance != null && ((delta > 0 && n == 1) || n == 0))
-				ClutterSystem.instance.ResetGrass(at, 1.5f);
+				ClutterSystem.instance.ResetGrass(at, 2.5f);
 		}
 
 		private void ClearBlocks()

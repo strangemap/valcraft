@@ -18,7 +18,7 @@ loom {
 		// dev client: a fixed window size so the camera/projection maths is easy to check
 		client {
 			programArgs "--width", "1920", "--height", "1080"
-			vmArgs "--enable-native-access=ALL-UNNAMED"
+			vmArgs "--enable-native-access=ALL-UNNAMED", "-Dpassthrough.startHidden=true"
 		}
 	}
 }

@@ -80,6 +80,21 @@ public final class PlayerSync {
 		}
 	}
 
+	/** End of each client tick: the host's head and body rotation, over whatever Minecraft's tick turned them to. */
+	public static void afterTick(final LocalPlayer player) {
+		HostState.Pose p = HostState.live();
+		if (p == null || p.drive()) {
+			return;
+		}
+
+		player.setYRot(p.lookYaw());
+		player.setXRot(p.lookPitch());
+		player.yRotO = p.lookYaw();
+		player.xRotO = p.lookPitch();
+		player.yHeadRot = player.yHeadRotO = p.lookYaw();
+		player.yBodyRot = player.yBodyRotO = p.bodyYaw();
+	}
+
 	/**
 	 * Every client tick, at the start of the player's tick (the old position is already saved, so the model
 	 * interpolates and walks): in first person the player's eyes are at the host camera, in third person
