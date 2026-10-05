@@ -46,7 +46,9 @@ final class ClientInput {
 					// Minecraft's attack damage with it)
 					String item = BuiltInRegistries.ITEM.getKey(player.getMainHandItem().getItem()).getPath();
 					double damage = player.getAttributeValue(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE);
-					Passthrough.events.accept(String.format(java.util.Locale.ROOT, "{\"t\":\"melee\",\"item\":\"%s\",\"dmg\":%.2f}", item, damage));
+					// the attack cooldown, as Minecraft judges it before this swing resets it (0 just swung .. 1 fully charged)
+					float charge = player.getAttackStrengthScale(0.5F);
+					Passthrough.events.accept(String.format(java.util.Locale.ROOT, "{\"t\":\"melee\",\"item\":\"%s\",\"dmg\":%.2f,\"charge\":%.3f}", item, damage, charge));
 				}
 
 				if (key != null) {

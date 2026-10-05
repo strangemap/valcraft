@@ -31,6 +31,7 @@ namespace ValCraft
 		private Link link;
 		private ConfigEntry<KeyboardShortcut> keyToggle, keyRelevel, keyHands;
 		private ConfigEntry<float> meleeDamage, arrowDamage, explosionDamage;
+		internal ConfigEntry<float> damageMultiplier;
 		private bool passOn = true;
 		/// <summary>Mouse buttons, wheel and number keys go to Minecraft (its hands) instead of Valheim's weapons.</summary>
 		internal static bool mcHands = true;
@@ -61,8 +62,9 @@ namespace ValCraft
 			keyRelevel = Config.Bind("Keys", "Relevel", new KeyboardShortcut(KeyCode.F8), "Re-level Minecraft's ground to where you stand");
 			keyHands = Config.Bind("Keys", "Hands", new KeyboardShortcut(KeyCode.F6), "Mouse/hotbar: Minecraft's hands or Valheim's weapons");
 			meleeDamage = Config.Bind("Combat", "MeleeDamage", 35f, "Valheim damage of a Minecraft sword swing");
-			arrowDamage = Config.Bind("Combat", "ArrowDamage", 30f, "Valheim damage of a Minecraft arrow");
-			explosionDamage = Config.Bind("Combat", "ExplosionDamage", 120f, "Valheim damage at the centre of a Minecraft explosion (TNT, creepers)");
+			damageMultiplier = Config.Bind("Combat", "DamageMultiplier", 12f, "Valheim damage per point of Minecraft attack damage (diamond sword 7 x 12 = 84)");
+			arrowDamage = Config.Bind("Combat", "ArrowDamage2", 70f, "Valheim damage of a Minecraft arrow");
+			explosionDamage = Config.Bind("Combat", "ExplosionDamage2", 250f, "Valheim damage at the centre of a Minecraft explosion (TNT, creepers)");
 			BindControls();
 			link = new Link("ws://127.0.0.1:" + Config.Bind("Link", "Port", 25599, "Minecraft passthrough port").Value + "/");
 			link.Start();
@@ -465,8 +467,13 @@ namespace ValCraft
 					break;
 				}
 				case "melee":
-					Melee(m.TryGetValue("item", out var mi) ? mi as string ?? "" : "", m.TryGetValue("dmg", out var md) ? (float)Json.D(md) : meleeDamage.Value / 5f);
+				{
+					// Minecraft's attack cooldown: a spam click does a fifth, a fully charged swing all of it
+					float charge = m.TryGetValue("charge", out var mc) ? Mathf.Clamp01((float)Json.D(mc)) : 1f;
+					float mcDamage = m.TryGetValue("dmg", out var md) ? (float)Json.D(md) : meleeDamage.Value / 12f;
+					Melee(m.TryGetValue("item", out var mi) ? mi as string ?? "" : "", mcDamage * (0.2f + 0.8f * charge * charge));
 					break;
+				}
 				case "proj":
 					Projectiles(Json.L(m["p"]));
 					break;
